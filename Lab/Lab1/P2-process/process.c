@@ -4,6 +4,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <sys/wait.h>
 
 int counter = 0;
 int numOfProcess = 0;
@@ -25,6 +26,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
+    int status;
     pid_t child;
     // group of processes
     pid_t children[numOfProcess];
@@ -105,7 +107,8 @@ int main(int argc, char *argv[])
         perror("parent kill failed\n");
         exit(1);
     }
-    wait(NULL);
+    // wait all processes
+    wait(&status);
     printf("\nall processes have done!\n");
     return 0;
 }
