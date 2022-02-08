@@ -1,7 +1,7 @@
 //-----------------------------------------
 // NAME: Xiaoran Xie
 // STUDENT NUMBER: 7884702
-// COURSE: COMP 3430, SECTION: A02
+// COURSE: COMP 3430, SECTION: A01
 // INSTRUCTOR: Robert Guderian
 // ASSIGNMENT: assignment 1, QUESTION: a1-elf
 //
