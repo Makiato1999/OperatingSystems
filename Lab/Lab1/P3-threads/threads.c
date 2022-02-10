@@ -45,8 +45,8 @@ void *downloader_thread(void *arg)
         // change this to whatever URL you actually want to download, being
         // careful to not download something bigger than the `quota` command
         // reports as the maximum space you have in your user directory.
-        //curl_easy_setopt(curl, CURLOPT_URL, "https://google.com");
-        curl_easy_setopt(curl, CURLOPT_URL, "https://umanitoba.ca/");
+        curl_easy_setopt(curl, CURLOPT_URL, "https://google.com");
+        //curl_easy_setopt(curl, CURLOPT_URL, "https://umanitoba.ca/");
         // use our write function (to write to a file instead of stdout)
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
         // artificially limit download speeds to 2kb/s
