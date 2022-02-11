@@ -29,10 +29,16 @@ typedef struct COFF_HEADER
 void readFile(coff_header *header, int handle);
 void printInfo(coff_header *header, char *fileName);
 
-int main(void)
+int main(int argc, char *argv[])
 {
+    // exception
+    if (argc < 2)
+    {
+        printf("Invalid arguments\n");
+        exit(1);
+    }
     // 64bit x86
-    char *fileName = "putty.exe";
+    char *fileName = argv[1];
     coff_header header;
     int header_fd = open(fileName, O_RDONLY);
     readFile(&header, header_fd);
