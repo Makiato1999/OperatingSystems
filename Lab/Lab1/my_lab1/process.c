@@ -30,16 +30,19 @@ int main(int argc, char *argv[])
     pid_t child;
     // group of processes
     pid_t children[numOfProcess];
-
-    if (signal(SIGUSR1, handler) == SIG_ERR)
+    pid_t parent = getpid();
+    if (parent == getpid())
     {
-        perror("receive child signal failed\n");
-        exit(1);
-    }
-    else if (signal(SIGUSR2, handler) == SIG_ERR)
-    {
-        perror("receive itself signal failed\n");
-        exit(1);
+    	if (signal(SIGUSR1, handler) == SIG_ERR)
+    	{
+        	perror("receive child signal failed\n");
+        	exit(1);
+    	}	
+    	else if (signal(SIGUSR2, handler) == SIG_ERR)
+    	{
+        	perror("receive itself signal failed\n");
+        	exit(1);
+    	}
     }
     int i;
     for (i = 0; i < numOfProcess; i++)
@@ -69,7 +72,7 @@ int main(int argc, char *argv[])
     if (child == 0)
     {
         // child
-        pid_t parent = getppid();
+        //pid_t parent = getppid();
         if (kill(parent, SIGUSR1) == -1)
         {
             perror("child kill failed\n");
@@ -107,8 +110,13 @@ int main(int argc, char *argv[])
         perror("parent kill failed\n");
         exit(1);
     }
+ 
     // wait all processes
-    wait(&status);
+    while (wait(&status) == -1)
+    {
+	printf("wait failed\n");
+    }
+    printf("parent(%d) catches the signal SIGUSR2\n", getpid());
     printf("\nall processes have done!\n");
     return 0;
 }
@@ -117,11 +125,11 @@ void handler(int signo)
 {
     if (signo == SIGUSR1)
     {
-        printf("the %dth time parent(%d) catches the child signal SIGUSR1\n", ++counter, getppid());
+        printf("the %dth time parent(%d) catches the child signal SIGUSR1\n", ++counter, getpid());
     }
     else if (signo == SIGUSR2)
     {
-        printf("parent(%d) catches the signal SIGUSR2\n", getppid());
+        //printf("parent(%d) catches the signal SIGUSR2\n", getpid());
     }
     return;
 }
