@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (kill(-children[0], SIGUSR2) == -1)
+    if (kill(0, SIGUSR2) == -1)
     {
         perror("parent kill failed\n");
         exit(1);
