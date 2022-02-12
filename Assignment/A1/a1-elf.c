@@ -42,12 +42,37 @@ typedef struct ELF_HEADER
 	uint16_t numOfProgHeader;
 	// size of an entry and the number of entries in the section header table
 	uint16_t sizeOfSectEntry;
-	uint16_t numOfSecteader;
+	uint16_t numOfSectHeader;
 	// entry in the section headers that is the string table
 	uint16_t entrySectHeaders;
 } elf_header;
-#pragma pack(pop)
 
+typedef struct PROGRAM_HEADER
+{
+	// segment type
+	uint32_t segmentType;
+	// virtual address of the segment in memory
+	uint32_t virtualAddr32b;
+	uint64_t virtualAddr64b;
+	// size in the file image of the program header
+	uint32_t sizeInImage32b;
+	uint64_t sizeInImage64b;
+	// store first up to 32 bytes for program header
+	unsigned char database[32];
+} program_header;
+
+typedef struct SECTION_HEADER
+{
+	// name of the section
+	uint32_t name;
+	// section header type
+	// virtual address of the section in memory
+	// size in the file image of the section header
+	// store first up to 32 bytes for program header
+	unsigned char database[32];
+} section_header;
+
+// variables
 typedef enum VERSION
 {
 	// 32-bits is 0, 64-bits is 1
@@ -55,10 +80,18 @@ typedef enum VERSION
 	version_64bits
 } version;
 version flag;
+uint64_t offset = 0;	// bytes that the pointer has moved
+int rest = 0;			// bytes that each parts has leaved
+uint64_t startAddr = 0; // each parts start address (each program or section)
+
+#pragma pack(pop)
 
 void check_if_elf(elf_header *elf_header, int handle);
 void read_elf_header(elf_header *elf_header, int handle);
-void print_elf_header_info(elf_header *elf_header);
+void print_elf_header(elf_header *elf_header);
+void read_program_header(program_header *program_header, elf_header *elf_header, int handle);
+void print_program_header(program_header *program_header, int index);
+//void read_section_header(section_header *section_header, elf_header *elf_header, int handle);
 
 int main(int argc, char *argv[])
 {
@@ -76,9 +109,10 @@ int main(int argc, char *argv[])
 	elf_header elf_header;
 	check_if_elf(&elf_header, fd);
 	read_elf_header(&elf_header, fd);
-
-	// output
-	print_elf_header_info(&elf_header);
+	program_header program_header;
+	read_program_header(&program_header, &elf_header, fd);
+	//section_header section_header;
+	//read_section_header(&section_header, &elf_header, fd);
 
 	return EXIT_SUCCESS;
 }
@@ -158,10 +192,10 @@ void read_elf_header(elf_header *elf_header, int handle)
 		read(handle, &elf_header->sizeOfProgEntry, 2);
 		// number of entries in the program header table
 		read(handle, &elf_header->numOfProgHeader, 2);
-		// size of an entry 
+		// size of an entry
 		read(handle, &elf_header->sizeOfSectEntry, 2);
 		// number of entries in the section header table
-		read(handle, &elf_header->numOfSecteader, 2);
+		read(handle, &elf_header->numOfSectHeader, 2);
 		// entry in the section headers that is the string table
 		read(handle, &elf_header->entrySectHeaders, 2);
 	}
@@ -181,22 +215,24 @@ void read_elf_header(elf_header *elf_header, int handle)
 		read(handle, &elf_header->sizeOfProgEntry, 2);
 		// number of entries in the program header table
 		read(handle, &elf_header->numOfProgHeader, 2);
-		// size of an entry 
+		// size of an entry
 		read(handle, &elf_header->sizeOfSectEntry, 2);
 		// number of entries in the section header table
-		read(handle, &elf_header->numOfSecteader, 2);
+		read(handle, &elf_header->numOfSectHeader, 2);
 		// entry in the section headers that is the string table
 		read(handle, &elf_header->entrySectHeaders, 2);
 	}
+	// output
+	print_elf_header(elf_header);
 }
 //------------------------------------------------------
-// myRoutine: print_elf_header_info
+// myRoutine: print_elf_header
 //
 // PURPOSE: print elf header information
 // INPUT PARAMETERS:
 //	   elf_header *elf_header
 //------------------------------------------------------
-void print_elf_header_info(elf_header *elf_header)
+void print_elf_header(elf_header *elf_header)
 {
 	printf("ELF header:\n");
 
@@ -238,7 +274,7 @@ void print_elf_header_info(elf_header *elf_header)
 		// size of an entry and the number of entries in the program header table
 		printf("* there are %d program headers, each is %d bytes\n", elf_header->numOfProgHeader, elf_header->sizeOfProgEntry);
 		// size of an entry and the number of entries in the section header table
-		printf("* there are %d section headers, each is %d bytes\n", elf_header->numOfSecteader, elf_header->sizeOfSectEntry);
+		printf("* there are %d section headers, each is %d bytes\n", elf_header->numOfSectHeader, elf_header->sizeOfSectEntry);
 		// entry in the section headers that is the string table
 		printf("* the section header string table is %d\n", elf_header->entrySectHeaders);
 	}
@@ -251,8 +287,175 @@ void print_elf_header_info(elf_header *elf_header)
 		// size of an entry and the number of entries in the program header table
 		printf("* there are %d program headers, each is %d bytes\n", elf_header->numOfProgHeader, elf_header->sizeOfProgEntry);
 		// size of an entry and the number of entries in the section header table
-		printf("* there are %d section headers, each is %d bytes\n", elf_header->numOfSecteader, elf_header->sizeOfSectEntry);
+		printf("* there are %d section headers, each is %d bytes\n", elf_header->numOfSectHeader, elf_header->sizeOfSectEntry);
 		// entry in the section headers that is the string table
 		printf("* the section header string table is %d\n", elf_header->entrySectHeaders);
 	}
 }
+//------------------------------------------------------
+// myRoutine: read_program_header
+//
+// PURPOSE: read program head
+// INPUT PARAMETERS:
+//     program_header *header
+//     elf_header *elf_header
+//	   int handle
+//------------------------------------------------------
+void read_program_header(program_header *program_header, elf_header *elf_header, int handle)
+{
+	assert(program_header != NULL);
+	assert(handle >= 0);
+
+	startAddr = elf_header->progHeaderAddr64b;
+	int i;
+	for (i = 0; i < elf_header->numOfProgHeader; i++)
+	{
+		// store first up to 32 bytes for program header
+		int j;
+		for (j = 0; j < 32; j++)
+		{
+			read(handle, &program_header->database[j], 1);
+		}
+		lseek(handle, -32, SEEK_CUR); // go back to beginning of program header
+
+		// segment type
+		read(handle, &program_header->segmentType, 4);
+		offset += 4;
+		if (flag == version_32bits)
+		{
+			// skip 0 byte
+			lseek(handle, 0, SEEK_CUR);
+			// skip 4 byte
+			lseek(handle, 4, SEEK_CUR);
+			offset += 4;
+			// virtual address of the segment in memory
+			read(handle, &program_header->virtualAddr32b, 4);
+			offset += 4;
+			// skip 4 byte
+			lseek(handle, 4, SEEK_CUR);
+			offset += 4;
+			// size in the file image of the program header
+			read(handle, &program_header->sizeInImage32b, 4);
+			offset += 4;
+			// skip 4+4+4 byte
+			lseek(handle, 12, SEEK_CUR);
+			offset += 12;
+			assert(offset == 32);
+			// skip to next program header
+			rest = (elf_header->sizeOfProgEntry) - (offset);
+			lseek(handle, rest, SEEK_CUR);
+		}
+		else if (flag == version_64bits)
+		{
+			// skip 4 byte
+			lseek(handle, 4, SEEK_CUR);
+			offset += 4;
+			// skip 8 byte
+			lseek(handle, 8, SEEK_CUR);
+			offset += 8;
+			// virtual address of the segment in memory
+			read(handle, &program_header->virtualAddr64b, 8);
+			offset += 8;
+			// skip 8 byte
+			lseek(handle, 8, SEEK_CUR);
+			offset += 8;
+			// size in the file image of the program header
+			read(handle, &program_header->sizeInImage64b, 8);
+			offset += 8;
+			// skip 8+8 byte
+			lseek(handle, 16, SEEK_CUR);
+			offset += 16;
+			assert(offset == 56);
+			// skip to next program header
+			rest = (elf_header->sizeOfProgEntry) - (offset);
+			lseek(handle, rest, SEEK_CUR);
+		}
+
+		// output
+		print_program_header(program_header, i);
+		// update start Address
+		startAddr += elf_header->sizeOfProgEntry;
+		// update offset
+		offset = 0;
+	}
+	startAddr = 0;
+}
+//------------------------------------------------------
+// myRoutine: print_program_header
+//
+// PURPOSE: print program head information
+// INPUT PARAMETERS:
+//	   program_header *program_header
+//     int index
+//------------------------------------------------------
+void print_program_header(program_header *program_header, int index)
+{
+	printf("\nProgram header #%d: \n", index);
+	// segment type
+	printf("* segment type 0x%08x\n", program_header->segmentType);
+	if (flag == version_32bits)
+	{
+		// virtual address of the segment in memory
+		printf("* virtual address of segment 0x%016x\n", program_header->virtualAddr32b);
+		// size in the file image of the program header
+		printf("* size in file %u bytes\n", program_header->sizeInImage32b);
+		// program header table starts at
+		printf("* first up to 32 bytes starting at 0x%016llx:\n", startAddr);
+	}
+	else if (flag == version_64bits)
+	{
+		// virtual address of the segment in memory
+		printf("* virtual address of segment 0x%016llx\n", program_header->virtualAddr64b);
+		// size in the file image of the program header
+		printf("* size in file %llu bytes\n", program_header->sizeInImage64b);
+		// program header table starts at
+		printf("* first up to 32 bytes starting at 0x%016llx:\n", startAddr);
+	}
+
+	int i;
+	for (i = 0; i < 32; i++)
+	{
+		if (i == 16)
+		{
+			printf("\n");
+		}
+		printf("%02x ", (program_header->database[i]));
+	}
+	printf("\n");
+}
+//------------------------------------------------------
+// myRoutine: read_section_header
+//
+// PURPOSE: read section head
+// INPUT PARAMETERS:
+//     section_header *header
+//	   elf_header *elf_header
+//	   int handle
+//------------------------------------------------------
+/*
+void read_section_header(section_header *section_header, elf_header *elf_header, int handle)
+{
+	assert(section_header != NULL);
+	assert(handle >= 0);
+
+	int i;
+	for (i = 0; i < elf_header->numOfSectHeader; i++)
+	{
+		// store first up to 32 bytes for section header
+		int j;
+		for (j = 0; j < 32; j++)
+		{
+			read(handle, &section_header->database[j], 1);
+		}
+		lseek(handle, -32, SEEK_CUR); // go back to beginning of section header
+
+		// name of the section
+
+		uint32_t name;
+		// section header type
+		// virtual address of the section in memory
+		// size in the file image of the section header
+	}
+	
+}*/
+
