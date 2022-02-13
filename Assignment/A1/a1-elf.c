@@ -55,6 +55,9 @@ typedef struct PROGRAM_HEADER
 {
 	// segment type
 	uint32_t segmentType;
+	// segment Offset
+	uint32_t segOffset32b;
+	uint64_t segOffset64b;
 	// virtual address of the segment in memory
 	uint32_t virtualAddr32b;
 	uint64_t virtualAddr64b;
@@ -93,6 +96,7 @@ uint64_t offset = 0;	// bytes that the pointer has moved
 int rest = 0;			// bytes that each parts has leaved
 uint64_t startAddr = 0; // each parts start address (each program or section)
 unsigned char *name;	// section name
+int tempAddr = 0;
 
 #pragma pack(pop)
 
@@ -323,14 +327,6 @@ void read_program_header(program_header *program_header, elf_header *elf_header,
 	{
 		// move to program table address
 		lseek(handle, startAddr, SEEK_SET);
-		// store first up to 32 bytes for program header
-		int j;
-		for (j = 0; j < 32; j++)
-		{
-			read(handle, &program_header->database[j], 1);
-		}
-		lseek(handle, -32, SEEK_CUR); // go back to beginning of program header
-
 		// segment type
 		read(handle, &program_header->segmentType, 4);
 		offset += 4;
@@ -338,8 +334,8 @@ void read_program_header(program_header *program_header, elf_header *elf_header,
 		{
 			// skip 0 byte
 			lseek(handle, 0, SEEK_CUR);
-			// skip 4 byte
-			lseek(handle, 4, SEEK_CUR);
+			// segment offset
+			read(handle, &program_header->segOffset32b, 4);
 			offset += 4;
 			// virtual address of the segment in memory
 			read(handle, &program_header->virtualAddr32b, 4);
@@ -356,15 +352,24 @@ void read_program_header(program_header *program_header, elf_header *elf_header,
 			assert(offset == 32);
 			// skip to next program header
 			rest = (elf_header->sizeOfProgEntry) - (offset);
-			lseek(handle, rest, SEEK_CUR);
+			tempAddr = lseek(handle, rest, SEEK_CUR);
+
+			// store first up to 32 bytes for segment data
+			lseek(handle, program_header->segOffset32b, SEEK_SET);
+			int j;
+			for (j = 0; j < 32; j++)
+			{
+				read(handle, &program_header->database[j], 1);
+			}
+			lseek(handle, tempAddr, SEEK_SET); // go back to beginning of program header
 		}
 		else if (flag == version_64bits)
 		{
 			// skip 4 byte
 			lseek(handle, 4, SEEK_CUR);
 			offset += 4;
-			// skip 8 byte
-			lseek(handle, 8, SEEK_CUR);
+			// segment offset
+			read(handle, &program_header->segOffset64b, 8);
 			offset += 8;
 			// virtual address of the segment in memory
 			read(handle, &program_header->virtualAddr64b, 8);
@@ -381,7 +386,16 @@ void read_program_header(program_header *program_header, elf_header *elf_header,
 			assert(offset == 56);
 			// skip to next program header
 			rest = (elf_header->sizeOfProgEntry) - (offset);
-			lseek(handle, rest, SEEK_CUR);
+			tempAddr = lseek(handle, rest, SEEK_CUR);
+
+			// store first up to 32 bytes for segment data
+			lseek(handle, program_header->segOffset64b, SEEK_SET);
+			int j;
+			for (j = 0; j < 32; j++)
+			{
+				read(handle, &program_header->database[j], 1);
+			}
+			lseek(handle, tempAddr, SEEK_SET); // go back to beginning of program header
 		}
 
 		// output
@@ -413,7 +427,7 @@ void print_program_header(program_header *program_header, int index)
 		// size in the file image of the program header
 		printf("* size in file %u bytes\n", program_header->sizeInImage32b);
 		// program header table starts at
-		printf("* first up to 32 bytes starting at 0x%016lx:\n", startAddr);
+		printf("* first up to 32 bytes starting at 0x%016x:\n", program_header->segOffset32b);
 	}
 	else if (flag == version_64bits)
 	{
@@ -422,7 +436,7 @@ void print_program_header(program_header *program_header, int index)
 		// size in the file image of the program header
 		printf("* size in file %lu bytes\n", program_header->sizeInImage64b);
 		// program header table starts at
-		printf("* first up to 32 bytes starting at 0x%016lx:\n", startAddr);
+		printf("* first up to 32 bytes starting at 0x%016lx:\n", program_header->segOffset64b);
 	}
 
 	int i;
@@ -491,7 +505,8 @@ void read_section_header(section_header *section_header, elf_header *elf_header,
 			// output
 			print_section_header(section_header, i);
 			// update start Address
-			startAddr = lseek(handle, 0, SEEK_CUR);;
+			startAddr = lseek(handle, 0, SEEK_CUR);
+			;
 			// update offset
 			offset = 0;
 		}
@@ -513,7 +528,7 @@ void read_section_header(section_header *section_header, elf_header *elf_header,
 			lseek(handle, -32, SEEK_CUR); // go back to beginning of section header
 			// An offset to a string in the .shstrtab section that represents the name of this section.
 			read(handle, &section_header->nameOffset, 4);
-			offset += 4;		
+			offset += 4;
 			// section header type
 			read(handle, &section_header->type, 4);
 			offset += 4;
