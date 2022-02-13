@@ -321,17 +321,17 @@ void read_program_header(program_header *program_header, elf_header *elf_header,
 	assert(program_header != NULL);
 	assert(handle >= 0);
 
-	startAddr = elf_header->progHeaderAddr64b;
-	int i;
-	for (i = 0; i < elf_header->numOfProgHeader; i++)
+	if (flag == version_32bits)
 	{
-		// move to program table address
-		lseek(handle, startAddr, SEEK_SET);
-		// segment type
-		read(handle, &program_header->segmentType, 4);
-		offset += 4;
-		if (flag == version_32bits)
+		startAddr = elf_header->progHeaderAddr32b;
+		int i;
+		for (i = 0; i < elf_header->numOfProgHeader; i++)
 		{
+			// move to program table address
+			lseek(handle, startAddr, SEEK_SET);
+			// segment type
+			read(handle, &program_header->segmentType, 4);
+			offset += 4;
 			// skip 0 byte
 			lseek(handle, 0, SEEK_CUR);
 			// segment offset
@@ -362,9 +362,26 @@ void read_program_header(program_header *program_header, elf_header *elf_header,
 				read(handle, &program_header->database[j], 1);
 			}
 			lseek(handle, tempAddr, SEEK_SET); // go back to beginning of program header
+
+			// output
+			print_program_header(program_header, i);
+			// update start Address
+			startAddr = lseek(handle, 0, SEEK_CUR);
+			// update offset
+			offset = 0;
 		}
-		else if (flag == version_64bits)
+	}
+	else if (flag == version_64bits)
+	{
+		startAddr = elf_header->progHeaderAddr64b;
+		int i;
+		for (i = 0; i < elf_header->numOfProgHeader; i++)
 		{
+			// move to program table address
+			lseek(handle, startAddr, SEEK_SET);
+			// segment type
+			read(handle, &program_header->segmentType, 4);
+			offset += 4;
 			// skip 4 byte
 			lseek(handle, 4, SEEK_CUR);
 			offset += 4;
@@ -396,14 +413,14 @@ void read_program_header(program_header *program_header, elf_header *elf_header,
 				read(handle, &program_header->database[j], 1);
 			}
 			lseek(handle, tempAddr, SEEK_SET); // go back to beginning of program header
-		}
 
-		// output
-		print_program_header(program_header, i);
-		// update start Address
-		startAddr = lseek(handle, 0, SEEK_CUR);
-		// update offset
-		offset = 0;
+			// output
+			print_program_header(program_header, i);
+			// update start Address
+			startAddr = lseek(handle, 0, SEEK_CUR);
+			// update offset
+			offset = 0;
+		}
 	}
 	startAddr = 0;
 }
