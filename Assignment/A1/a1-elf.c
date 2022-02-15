@@ -70,7 +70,7 @@ typedef struct PROGRAM_HEADER
 
 typedef struct SECTION_HEADER
 {
-	unsigned char name[64];
+	unsigned char name[10];
 	// An offset to a string in the .shstrtab section that represents the name of this section.
 	uint32_t nameOffset;
 	// section header type
@@ -86,6 +86,8 @@ typedef struct SECTION_HEADER
 	uint64_t sizeInImage64b;
 	// store first up to 32 bytes for program header
 	unsigned char database[32];
+
+	uint64_t stringTableAddr; // string table address in section
 } section_header;
 
 // variables
@@ -96,12 +98,11 @@ typedef enum VERSION
 	version_64bits
 } version;
 version flag;
-uint64_t offset = 0;	 // bytes that the pointer has moved
-int rest = 0;			 // bytes that each parts has leaved
-uint64_t startAddr = 0;	 // each parts start address (each program or section)
-unsigned char *name;	 // section name
-int tempAddr = 0;		 // save next section / program address
-int stringTableAddr = 0; // string table address in section
+uint64_t offset = 0; // bytes that the pointer has moved
+int rest = 0;		 // bytes that each parts has leaved
+uint64_t startAddr;	 // each parts start address (each program or section)
+unsigned char *name; // section name
+uint64_t tempAddr;	 // save next section / program address
 #pragma pack(pop)
 
 void check_if_elf(elf_header *elf_header, int handle);
@@ -487,21 +488,23 @@ void read_section_header(section_header *section_header, elf_header *elf_header,
 
 	if (flag == version_32bits)
 	{
-		startAddr = elf_header->sectHeaderAddr32b;
 		// move to section table address
-		lseek(handle, startAddr, SEEK_SET);
+		lseek(handle, elf_header->sectHeaderAddr32b, SEEK_SET);
+
 		// get string table address
-		int i;
-		for (i = 0; i < elf_header->numOfSectHeader && i != elf_header->indexOfNameTable; i++)
+		int q = 0;
+		for (q = 0; q < elf_header->numOfSectHeader && q != elf_header->indexOfNameTable; q++)
 		{
-			stringTableAddr = lseek(handle, elf_header->sizeOfSectEntry, SEEK_CUR);
+			lseek(handle, elf_header->sizeOfSectEntry, SEEK_CUR);
 		}
-		lseek(handle, startAddr, SEEK_SET); // go back to section beginning
+		lseek(handle, 16, SEEK_CUR);
+		read(handle, &section_header->stringTableAddr, 4);
 		// loop
+		int i;
 		for (i = 0; i < elf_header->numOfSectHeader; i++)
 		{
 			// move to section table address
-			lseek(handle, startAddr, SEEK_SET);
+			lseek(handle, elf_header->sectHeaderAddr32b + i * elf_header->sizeOfSectEntry, SEEK_SET);
 			// An offset to a string in the .shstrtab section that represents the name of this section.
 			read(handle, &section_header->nameOffset, 4);
 			offset += 4;
@@ -523,7 +526,7 @@ void read_section_header(section_header *section_header, elf_header *elf_header,
 			assert(offset == 24);
 			// skip to next section header
 			rest = (elf_header->sizeOfSectEntry) - (offset);
-			tempAddr = lseek(handle, rest, SEEK_CUR);
+			lseek(handle, rest, SEEK_CUR);
 
 			// store first up to 32 bytes for actual section data
 			lseek(handle, section_header->Offset32b, SEEK_SET);
@@ -532,33 +535,39 @@ void read_section_header(section_header *section_header, elf_header *elf_header,
 			{
 				read(handle, &section_header->database[j], 1);
 			}
-			lseek(handle, tempAddr, SEEK_SET); // go back to beginning of next section
+
+			// find name from string table
+			lseek(handle, section_header->stringTableAddr, SEEK_SET);
+			lseek(handle, section_header->nameOffset, SEEK_CUR);
+			read(handle, &section_header->name, 17);
+			// go back to beginning of next section
+			lseek(handle, elf_header->sectHeaderAddr32b + (i + 1) * elf_header->sizeOfSectEntry, SEEK_SET);
 
 			// output
 			print_section_header(section_header, i);
-			// update start Address
-			startAddr = lseek(handle, 0, SEEK_CUR);
 			// update offset
 			offset = 0;
 		}
 	}
 	else if (flag == version_64bits)
 	{
-		startAddr = elf_header->sectHeaderAddr64b;
 		// move to section table address
-		lseek(handle, startAddr, SEEK_SET);
+		lseek(handle, elf_header->sectHeaderAddr64b, SEEK_SET);
+
 		// get string table address
-		int i;
-		for (i = 0; i < elf_header->numOfSectHeader && i != elf_header->indexOfNameTable; i++)
+		int q = 0;
+		for (q = 0; q < elf_header->numOfSectHeader && q != elf_header->indexOfNameTable; q++)
 		{
-			stringTableAddr = lseek(handle, elf_header->sizeOfSectEntry, SEEK_CUR);
+			lseek(handle, elf_header->sizeOfSectEntry, SEEK_CUR);
 		}
-		lseek(handle, startAddr, SEEK_SET); // go back to section beginning
+		lseek(handle, 24, SEEK_CUR);
+		read(handle, &section_header->stringTableAddr, 8);
 		// loop
+		int i = 0;
 		for (i = 0; i < elf_header->numOfSectHeader; i++)
 		{
 			// move to section table address
-			lseek(handle, startAddr, SEEK_SET);
+			lseek(handle, elf_header->sectHeaderAddr64b + i * elf_header->sizeOfSectEntry, SEEK_SET);
 			// An offset to a string in the .shstrtab section that represents the name of this section.
 			read(handle, &section_header->nameOffset, 4);
 			offset += 4;
@@ -580,7 +589,7 @@ void read_section_header(section_header *section_header, elf_header *elf_header,
 			assert(offset == 40);
 			// skip to next section header
 			rest = (elf_header->sizeOfSectEntry) - (offset);
-			tempAddr = lseek(handle, rest, SEEK_CUR); // next section beginning
+			lseek(handle, rest, SEEK_CUR); // next section beginning
 
 			// store first up to 32 bytes for actual section data
 			lseek(handle, section_header->Offset64b, SEEK_SET);
@@ -589,24 +598,16 @@ void read_section_header(section_header *section_header, elf_header *elf_header,
 			{
 				read(handle, &section_header->database[j], 1);
 			}
-			lseek(handle, tempAddr, SEEK_SET); // go back to beginning of next section
 
-			// *************************************************************************
 			// find name from string table
-			lseek(handle, stringTableAddr, SEEK_SET);
+			lseek(handle, section_header->stringTableAddr, SEEK_SET);
 			lseek(handle, section_header->nameOffset, SEEK_CUR);
-			// for now, i have got the name location
-			// i also have name size which is section_header->sizeInImage64b
-			// but i dont know how to transfer section_header->sizeInImage64b to int
-			// because i cant use uint64_t for loop to read and print...
-			lseek(handle, tempAddr, SEEK_SET); // go back to beginning of next section
-			// dont forgot to update 32bits version if i have done!
-			// *************************************************************************
+			read(handle, &section_header->name, 17);
+			// go back to beginning of next section
+			lseek(handle, elf_header->sectHeaderAddr64b + (i + 1) * elf_header->sizeOfSectEntry, SEEK_SET);
 
 			// output
 			print_section_header(section_header, i);
-			// update start Address
-			startAddr = lseek(handle, 0, SEEK_CUR);
 			// update offset
 			offset = 0;
 		}
@@ -624,9 +625,14 @@ void print_section_header(section_header *section_header, int index)
 {
 	printf("\nSection header #%d: \n", index);
 	// name
-	printf("* name ");
+	printf("* section name ");
+	int counter = 0;
+	while (section_header->name[counter])
+	{
+		printf("%c", section_header->name[counter++]);
+	}
 	printf("\n");
-	printf("* section name offset %x\n", section_header->nameOffset);
+	//printf("* section name offset %x\n", section_header->nameOffset);
 
 	// type
 	printf("* type 0x%02x\n", section_header->type);
