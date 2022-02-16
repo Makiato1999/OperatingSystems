@@ -10,13 +10,17 @@ CFLAGS  = -g -Wall -Wpedantic -Wextra -Werror
 LFLAGS = 
   
 # the name to use for both the target source file, and the output file:
-TARGET = a1-elf
+TARGET1 = a1-elf
+TARGET2 = a1-procs
   
-all: $(TARGET)
+all: $(TARGET1) $(TARGET2)
   
-$(TARGET): $(TARGET).c
-	$(CC) $(CFLAGS) -o $(TARGET) $(TARGET).c $(LFLAGS)
+$(TARGET1): $(TARGET1).c
+	$(CC) $(CFLAGS) -o $(TARGET1) $(TARGET1).c
 
+$(TARGET2): $(TARGET2).c
+	$(CC) $(CFLAGS) -o $(TARGET2) $(TARGET2).c
 # use 'make clean'
 clean:
-	rm -rf *o $(TARGET)
+	rm -rf *o $(TARGET1)
+	rm -rf *o $(TARGET2)
