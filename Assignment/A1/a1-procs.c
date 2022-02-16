@@ -1,3 +1,13 @@
+//-----------------------------------------
+// NAME: Xiaoran Xie
+// STUDENT NUMBER: 7884702
+// COURSE: COMP 3430, SECTION: A01
+// INSTRUCTOR: Robert Guderian
+// ASSIGNMENT: assignment 1, QUESTION: a1-procs
+//
+// REMARKS: Process herder
+//
+//-----------------------------------------
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -15,30 +25,36 @@ typedef enum BOOLEAN
     false = 0,
     true
 } boolean;
-boolean isCatchSignal = false;
-int numOfWorkers = 0;
-int prevNumOfWorkers = 0;
-pid_t child;
-pid_t children[128];
-int counter = 0;
-int i = 0;
+boolean isCatchSignal = false; // control parent sleep(wait)
+boolean isLoop = false;        // control read repeatly
+int numOfWorkers = 0;          // current number of workers
+int prevNumOfWorkers = 0;      // previous number of workers
+pid_t child;                   // child id
+pid_t parent;                  // parent id
+int children[128];             // space for saving child id
+int i = 0;                     // control index of processes
 
 void handler(int signo);
 
 int main()
 {
-    // int status;
+    int status;
     //  catch signal
-    pid_t parent = getpid();
+    parent = getpid();
     printf("I am parent(%d)\n", parent); // parent
-    if (signal(SIGHUP, handler) == SIG_ERR)
-    {
-        perror("receive SIGHUP signal failed\n");
-        exit(1);
-    }
 
-    while (1)
+    while (!isLoop)
     {
+        if (signal(SIGHUP, handler) == SIG_ERR)
+        {
+            perror("receive SIGHUP signal failed\n");
+            exit(1);
+        }
+        if (signal(SIGINT, handler))
+        {
+            isLoop = true;
+        }
+
         // open config file
         char *fileName = "config.txt";
         FILE *fd = fopen(fileName, "r");
@@ -74,9 +90,12 @@ int main()
                     perror("fork failed\n");
                     exit(1);
                 }
-                if (child == 0)
+                if (child > 0)
                 {
-                    children[i] = getpid();
+                    children[i] = child;
+                }
+                else if (child == 0)
+                {
                     break;
                 }
                 i++;
@@ -85,43 +104,49 @@ int main()
             if (child == 0)
             {
                 printf("Child(%d) is starting\n", getpid());
-                while (1)
+                boolean isQuit = false;
+                if (signal(SIGINT, handler))
+                {
+                    isQuit = true;
+                }
+                while (!isQuit)
                 {
                     sleep(1);
-                    if (signal(SIGKILL, handler) != SIG_ERR)
-                    {
-                        printf("---------\n");
-                        break;
-                    }
                 }
-                printf("Child(%d) is being killed\nChild(%d) is exiting", getpid(), getpid());
-                exit(EXIT_SUCCESS);
+                //printf("Child(%d) is being killed\nChildren(%d) is exiting\n", getpid(), getpid());
+                exit(0);
             }
         }
         else if (prevNumOfWorkers > numOfWorkers)
         {
+            // printf("-------i(%d) children[i](%d)\n", i, children[i]);
             printf("Changing setting to %d\n", numOfWorkers);
             int j;
             for (j = 0; j < prevNumOfWorkers - numOfWorkers; j++)
             {
-                printf("2222222222\n");
+                
                 // send signal1 to let children exit
                 if (kill(children[--i], SIGKILL) == -1)
                 {
                     perror("parent kill failed\n");
                     exit(1);
                 }
+                printf("Child(%d) is being killed\nChildren(%d) is exiting\n", children[i], children[i]);
             }
         }
-        printf("========\n");
         // sleep until get signal, prepare read config file again
         while (isCatchSignal == false)
         {
             sleep(1);
         }
-        printf("++++++++++\n");
         // update previous number of workers
         prevNumOfWorkers = numOfWorkers;
+    }
+    // send signal1 to let children exit
+    // wait all processes
+    while (wait(&status) == -1)
+    {
+        printf("wait failed\n");
     }
 
     return 0;
@@ -136,6 +161,12 @@ void handler(int signo)
     }
     if (signo == SIGKILL)
     {
+    }
+    if (signo == SIGINT)
+    {
+        isLoop = true;
+        printf("\nParent(%d) is exiting\nParent(%d) is being killed\n", parent, parent);
+        exit(0);
     }
     return;
 }
