@@ -26,7 +26,6 @@ typedef enum BOOLEAN
     true
 } boolean;
 boolean isCatchSignal = false; // control parent sleep(wait)
-boolean isLoop = false;        // control read repeatly
 int numOfWorkers = 0;          // current number of workers
 int prevNumOfWorkers = 0;      // previous number of workers
 pid_t child;                   // child id
@@ -39,20 +38,21 @@ void handler(int signo);
 int main()
 {
     int status;
-    //  catch signal
     parent = getpid();
     printf("I am parent(%d)\n", parent); // parent
 
-    while (!isLoop)
+    while (1)
     {
+        //  initialize and then catch signal
         if (signal(SIGHUP, handler) == SIG_ERR)
         {
             perror("receive SIGHUP signal failed\n");
             exit(1);
         }
-        if (signal(SIGINT, handler))
+        if (signal(SIGINT, handler) == SIG_ERR)
         {
-            isLoop = true;
+            perror("receive SIGINT signal failed\n");
+            exit(1);
         }
 
         // open config file
@@ -104,33 +104,37 @@ int main()
             if (child == 0)
             {
                 printf("Child(%d) is starting\n", getpid());
-                boolean isQuit = false;
-                if (signal(SIGINT, handler))
+                // boolean isQuit = false;
+                if (signal(SIGUSR1, handler) == SIG_ERR)
                 {
-                    isQuit = true;
+                    perror("receive SIGUSR1 failed\n");
+                    exit(1);
                 }
-                while (!isQuit)
+                if (signal(SIGINT, handler) == SIG_ERR)
+                {
+                    perror("receive SIGINT failed\n");
+                    exit(1);
+                }
+                while (1)
                 {
                     sleep(1);
                 }
-                //printf("Child(%d) is being killed\nChildren(%d) is exiting\n", getpid(), getpid());
-                exit(0);
             }
         }
         else if (prevNumOfWorkers > numOfWorkers)
         {
-            // printf("-------i(%d) children[i](%d)\n", i, children[i]);
             printf("Changing setting to %d\n", numOfWorkers);
             int j;
             for (j = 0; j < prevNumOfWorkers - numOfWorkers; j++)
             {
-                
+
                 // send signal1 to let children exit
-                if (kill(children[--i], SIGKILL) == -1)
+                if (kill(children[--i], SIGUSR1) == -1)
                 {
                     perror("parent kill failed\n");
                     exit(1);
                 }
+                wait(&status);
                 printf("Child(%d) is being killed\nChildren(%d) is exiting\n", children[i], children[i]);
             }
         }
@@ -142,7 +146,6 @@ int main()
         // update previous number of workers
         prevNumOfWorkers = numOfWorkers;
     }
-    // send signal1 to let children exit
     // wait all processes
     while (wait(&status) == -1)
     {
@@ -159,13 +162,16 @@ void handler(int signo)
         printf("\ncatch SIGHUP!\n");
         isCatchSignal = true;
     }
-    if (signo == SIGKILL)
+    if (signo == SIGUSR1)
     {
+        exit(0);
     }
     if (signo == SIGINT)
     {
-        isLoop = true;
-        printf("\nParent(%d) is exiting\nParent(%d) is being killed\n", parent, parent);
+        if (getpid() == parent)
+        {
+            printf("\nParent(%d) is exiting\nParent(%d) is being killed\n", parent, parent);
+        }
         exit(0);
     }
     return;
