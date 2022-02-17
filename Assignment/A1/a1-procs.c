@@ -21,7 +21,6 @@
 
 typedef enum BOOLEAN
 {
-    // 32-bits is 0, 64-bits is 1
     false = 0,
     true
 } boolean;
