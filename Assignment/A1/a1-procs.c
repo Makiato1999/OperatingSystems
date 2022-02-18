@@ -25,12 +25,13 @@ typedef enum BOOLEAN
     true
 } boolean;
 boolean isCatchSignal = false; // control parent sleep(wait)
-int numOfWorkers = 0;          // current number of workers
-int prevNumOfWorkers = 0;      // previous number of workers
-pid_t child;                   // child id
-pid_t parent;                  // parent id
-int children[128];             // space for saving child id
-int i = 0;                     // control index of processes
+boolean isQuit = false;
+int numOfWorkers = 0;     // current number of workers
+int prevNumOfWorkers = 0; // previous number of workers
+pid_t child;              // child id
+pid_t parent;             // parent id
+int children[128];        // space for saving child id
+int i = 0;                // control index of processes
 
 void handler(int signo);
 
@@ -40,7 +41,7 @@ int main()
     parent = getpid();
     printf("I am parent(%d)\n", parent); // parent
 
-    while (1)
+    while (!isQuit)
     {
         //  initialize and then catch signal
         if (signal(SIGHUP, handler) == SIG_ERR)
@@ -103,7 +104,6 @@ int main()
             if (child == 0)
             {
                 printf("Child(%d) is starting\n", getpid());
-                // boolean isQuit = false;
                 if (signal(SIGUSR1, handler) == SIG_ERR)
                 {
                     perror("receive SIGUSR1 failed\n");
@@ -144,12 +144,22 @@ int main()
         }
         // update previous number of workers
         prevNumOfWorkers = numOfWorkers;
+
     }
-    // wait all processes
-    while (wait(&status) == -1)
+    printf("\n");
+    // kill rest children processes
+    while (i > 0)
     {
-        printf("wait failed\n");
+        // send signal1 to let children exit
+        if (kill(children[--i], SIGUSR1) == -1)
+        {
+            perror("parent kill failed\n");
+            exit(1);
+        }
+        wait(&status);
+        printf("Child(%d) is being killed\nChildren(%d) is exiting\n", children[i], children[i]);
     }
+    printf("\nParent(%d) is exiting\nParent(%d) is being killed\n", parent, parent);
 
     return 0;
 }
@@ -167,11 +177,8 @@ void handler(int signo)
     }
     if (signo == SIGINT)
     {
-        if (getpid() == parent)
-        {
-            printf("\nParent(%d) is exiting\nParent(%d) is being killed\n", parent, parent);
-        }
-        exit(0);
+        isCatchSignal = true;
+        isQuit = true;
     }
     return;
 }
