@@ -26,6 +26,7 @@ typedef enum BOOLEAN
     true
 } boolean;
 boolean isCatchSignal = false; // control parent sleep(wait)
+boolean isQuit = false;        // control while loop(read)
 unsigned long currThread = 0;  // current Thread id
 long i = 0;                    // control index of threads
 int numOfWorkers = 0;          // current number of workers
@@ -41,9 +42,9 @@ int main()
 {
     // main thread is also main process
     parent = getpid();
-    printf("I am thread 0 (%d)\n", parent);
+    printf("I am main thread (%d)\n", parent);
 
-    while (1)
+    while (!isQuit)
     {
         //  initialize and then catch signal
         if (signal(SIGHUP, handler) == SIG_ERR)
@@ -119,6 +120,7 @@ int main()
         // update previous number of workers
         prevNumOfWorkers = numOfWorkers;
     }
+    printf("\nStopping main thread\nMain thread is going to a better place\n");
 
     return 0;
 }
@@ -148,7 +150,8 @@ void handler(int signo)
             pthread_join(children[i], NULL);
             printf("Stopping %ld\nThread %ld is going to a better place\n", i, i);
         }
-        exit(0);
+        isCatchSignal = true;
+        isQuit = true;
     }
     return;
 }
