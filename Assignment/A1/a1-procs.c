@@ -134,7 +134,7 @@ int main()
                     exit(1);
                 }
                 wait(&status);
-                printf("Child(%d) is being killed\nChildren(%d) is exiting\n", children[i], children[i]);
+                printf("Child(%d) is being killed\nChild(%d) is exiting\n", children[i], children[i]);
             }
         }
         // sleep until get signal, prepare read config file again
