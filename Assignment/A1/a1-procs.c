@@ -25,13 +25,13 @@ typedef enum BOOLEAN
     true
 } boolean;
 boolean isCatchSignal = false; // control parent sleep(wait)
-boolean isQuit = false;
-int numOfWorkers = 0;     // current number of workers
-int prevNumOfWorkers = 0; // previous number of workers
-pid_t child;              // child id
-pid_t parent;             // parent id
-int children[128];        // space for saving child id
-int i = 0;                // control index of processes
+boolean isQuit = false;        // control while loop(read)
+int numOfWorkers = 0;          // current number of workers
+int prevNumOfWorkers = 0;      // previous number of workers
+pid_t child;                   // child id
+pid_t parent;                  // parent id
+int children[128];             // space for saving child id
+int i = 0;                     // control index of processes
 
 void handler(int signo);
 
@@ -144,7 +144,6 @@ int main()
         }
         // update previous number of workers
         prevNumOfWorkers = numOfWorkers;
-
     }
     printf("\n");
     // kill rest children processes
