@@ -103,6 +103,8 @@ int rest = 0;		 // bytes that each parts has leaved
 uint64_t startAddr;	 // each parts start address (each program or section)
 unsigned char *name; // section name
 uint64_t tempAddr;	 // save next section / program address
+uint32_t temptype;
+
 #pragma pack(pop)
 
 void check_if_elf(elf_header *elf_header, int handle);
@@ -573,6 +575,7 @@ void read_section_header(section_header *section_header, elf_header *elf_header,
 			offset += 4;
 			// section header type
 			read(handle, &section_header->type, 4);
+			temptype = section_header->type;
 			offset += 4;
 			// skip 8 byte
 			lseek(handle, 8, SEEK_CUR);
@@ -635,7 +638,7 @@ void print_section_header(section_header *section_header, int index)
 	//printf("* section name offset %x\n", section_header->nameOffset);
 
 	// type
-	printf("* type 0x%02x\n", section_header->type);
+	printf("* type 0x%02x\n", temptype);
 	if (flag == version_32bits)
 	{
 		// virtual address of the section in memory
