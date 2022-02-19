@@ -35,8 +35,17 @@ int i = 0;                     // control index of processes
 
 void handler(int signo);
 
-int main()
+int main(int argc, char *argv[])
 {
+    // exception
+	if (argc < 2)
+	{
+		printf("Invalid arguments\n");
+		exit(1);
+	}
+	// read file
+	char *fileName = argv[1];
+
     int status;
     parent = getpid();
     printf("I am parent(%d)\n", parent); // parent
@@ -56,7 +65,6 @@ int main()
         }
 
         // open config file
-        char *fileName = "config.txt";
         FILE *fd = fopen(fileName, "r");
         if (fd == NULL)
         {
