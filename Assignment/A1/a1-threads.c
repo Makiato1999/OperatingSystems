@@ -38,8 +38,17 @@ int rc;                        // pthread_create return value
 void handler(int signo);
 void *worker_thread(void *arg);
 
-int main()
+int main(int argc, char *argv[])
 {
+    // exception
+	if (argc < 2)
+	{
+		printf("Invalid arguments\n");
+		exit(1);
+	}
+	// read file
+	char *fileName = argv[1];
+
     // main thread is also main process
     parent = getpid();
     printf("I am main thread (%d)\n", parent);
@@ -59,7 +68,6 @@ int main()
         }
 
         // open config file
-        char *fileName = "config.txt";
         FILE *fd = fopen(fileName, "r");
         if (fd == NULL)
         {
