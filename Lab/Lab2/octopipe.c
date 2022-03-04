@@ -22,18 +22,17 @@ int main(int argc, char *argv[])
 
     int i;
     char *commandLine;
-    for (i = 1; i < argc; i++)
+    for (i = 0; i < argc - 1; i++)
     {
-        commandLine = argv[i];
+        commandLine = argv[i + 1];
         printf("%d is about to start [%s]\n", getpid(), commandLine);
     }
 
-    // create children processes
+    // create pipes
     int state;
     int fd[argc - 1][2];
-    for (i = 0; i < argc; i++)
+    for (i = 0; i < argc - 1; i++)
     {
-        // create pipe
         int result;
         if ((result = pipe(fd[i])) == -1)
         {
@@ -43,7 +42,7 @@ int main(int argc, char *argv[])
     }
 
     pid_t pid;
-    for (i = 1; i < argc; i++)
+    for (i = 0; i < argc - 1; i++)
     {
         pid = fork();
         if (pid == -1)
@@ -53,8 +52,24 @@ int main(int argc, char *argv[])
         }
         else if (pid == 0)
         {
-            commandLine = argv[i];
-            close(fd[i][1]); // parent close read
+            commandLine = argv[i + 1];
+            close(fd[i][1]);
+            dup2(fd[i][0], STDIN_FILENO);
+            close(fd[i][0]);
+            /*
+            int counter = 0;
+            char *commandArr[maxNum_eachCommand];
+            commandArr[counter] = strtok(commandLine, " ");
+            printf("command: %s\n", commandArr[counter]);
+            while (commandArr[counter] != NULL) 
+            {
+                counter++;
+                commandArr[counter] = strtok(NULL, " ");
+                printf("command: %s\n", commandArr[counter]);
+            }
+            commandArr[counter] = NULL;
+            */
+            // strtok
             char *commandArr[maxNum_eachCommand];
             int counter = 0;
             char *p;
@@ -74,7 +89,7 @@ int main(int argc, char *argv[])
                 printf("command: %s\n", commandArr[counter]);
                 counter++;
             }
-            // dup2(fd[i][0], STDOUT_FILENO);
+
             if (execvp(commandArr[0], commandArr) < 0)
             {
                 perror("Failed to execvp!\n");
@@ -82,29 +97,26 @@ int main(int argc, char *argv[])
             }
             exit(0);
         }
-        else
-        {
-            close(fd[i][0]); // parent close write
-            /*
-            int length;
-            char message[maxNum_eachLine];
-            while ((length = read(fd[i][0], message, maxNum_eachLine)) > 0)
-            {
-                message[length] = '\0';
-                printf("%s\n", message);
-            }*/
-        }
         usleep(200);
     }
-    /*
-    while (1)
+    int j;
+    for (j = 0; j < argc - 1; j++)
     {
-        char message[maxNum_eachLine];
-        printf("Please type something: ");
-        fgets(message, sizeof(message), stdin);
-        printf("\nYou typed: %s", message);
-        write(fd[1], message, strlen(message) + 1);
-    }*/
+        close(fd[j][0]); // parent close write
+    }
+    
+    char message[maxNum_eachLine];
+    while (fgets(message, maxNum_eachLine, stdin) != NULL)
+    {
+        for (j = 0; j < argc - 1; j++) 
+        {
+            write(fd[j][1], message, strlen(message));
+        }
+    }
+    for (j = 0; j < argc - 1; j++)
+    {
+        close(fd[j][1]);
+    }
 
     // wait all processes
     while (wait(&state) == -1)
