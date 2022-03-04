@@ -29,7 +29,7 @@ int main(int argc, char *argv[])
     }
 
     // create children processes
-    int status;
+    int state;
     int fd[argc - 1][2];
     for (i = 0; i < argc; i++)
     {
@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
         else if (pid == 0)
         {
             commandLine = argv[i];
-            close(fd[i][0]); // parent close read
+            close(fd[i][1]); // parent close read
             char *commandArr[maxNum_eachCommand];
             int counter = 0;
             char *p;
@@ -67,6 +67,7 @@ int main(int argc, char *argv[])
                 p = strtok(NULL, " ");
                 if (p == NULL)
                 {
+                    commandArr[counter] = NULL;
                     break;
                 }
                 commandArr[counter] = p;
@@ -79,10 +80,11 @@ int main(int argc, char *argv[])
                 perror("Failed to execvp!\n");
                 exit(1);
             }
+            exit(0);
         }
         else
         {
-            close(fd[i][1]); // parent close write
+            close(fd[i][0]); // parent close write
             /*
             int length;
             char message[maxNum_eachLine];
@@ -92,6 +94,7 @@ int main(int argc, char *argv[])
                 printf("%s\n", message);
             }*/
         }
+        usleep(200);
     }
     /*
     while (1)
@@ -104,7 +107,7 @@ int main(int argc, char *argv[])
     }*/
 
     // wait all processes
-    while (wait(&status) == -1)
+    while (wait(&state) == -1)
     {
         printf("wait failed\n");
     }
