@@ -7,7 +7,7 @@
 #include <string.h>
 
 #define maxNum_eachLine 1024
-#define maxNum_eachCommand 20
+#define maxNum_eachCommand 50
 #define STDIN_FILENO 0  // Standard input
 #define STDOUT_FILENO 1 // Standard output
 
@@ -21,29 +21,23 @@ int main(int argc, char *argv[])
     }
 
     int i;
+    int state;
+    pid_t pid;
     char *commandLine;
+    // create pipe array to save pipes
+    int fd[argc - 1][2];
     for (i = 0; i < argc - 1; i++)
     {
         commandLine = argv[i + 1];
         printf("%d is about to start [%s]\n", getpid(), commandLine);
-    }
 
-    // create pipes
-    int state;
-    int fd[argc - 1][2];
-    for (i = 0; i < argc - 1; i++)
-    {
+        // open pipes
         int result;
         if ((result = pipe(fd[i])) == -1)
         {
             perror("Failed to create pipe!\n");
             exit(1);
         }
-    }
-
-    pid_t pid;
-    for (i = 0; i < argc - 1; i++)
-    {
         pid = fork();
         if (pid == -1)
         {
@@ -52,44 +46,32 @@ int main(int argc, char *argv[])
         }
         else if (pid == 0)
         {
-            commandLine = argv[i + 1];
+            // close write and open read
             close(fd[i][1]);
+            // redirect the pipe output
             dup2(fd[i][0], STDIN_FILENO);
             close(fd[i][0]);
-            /*
-            int counter = 0;
-            char *commandArr[maxNum_eachCommand];
-            commandArr[counter] = strtok(commandLine, " ");
-            printf("command: %s\n", commandArr[counter]);
-            while (commandArr[counter] != NULL) 
-            {
-                counter++;
-                commandArr[counter] = strtok(NULL, " ");
-                printf("command: %s\n", commandArr[counter]);
-            }
-            commandArr[counter] = NULL;
-            */
-            // strtok
+
+            // strtok to get single command
+            commandLine = argv[i + 1];
             char *commandArr[maxNum_eachCommand];
             int counter = 0;
             char *p;
             p = strtok(commandLine, " ");
             commandArr[counter] = p;
-            printf("command: %s\n", commandArr[counter]);
+            // test:
+            //printf("command %d: %s\n", i, commandArr[counter]);
             counter++;
-            while (1)
+            while (p != NULL)
             {
                 p = strtok(NULL, " ");
-                if (p == NULL)
-                {
-                    commandArr[counter] = NULL;
-                    break;
-                }
                 commandArr[counter] = p;
-                printf("command: %s\n", commandArr[counter]);
+                // test: 
+                // printf("command %d: %s\n", i, commandArr[counter]);
                 counter++;
             }
-
+            commandArr[counter] = NULL;
+            // excute execvp
             if (execvp(commandArr[0], commandArr) < 0)
             {
                 perror("Failed to execvp!\n");
@@ -97,19 +79,22 @@ int main(int argc, char *argv[])
             }
             exit(0);
         }
+        // sleep for correct output order
         usleep(200);
     }
+    // close all read and open write
     int j;
     for (j = 0; j < argc - 1; j++)
     {
-        close(fd[j][0]); // parent close write
+        close(fd[j][0]);
     }
-    
+    // get standard input
     char message[maxNum_eachLine];
     while (fgets(message, maxNum_eachLine, stdin) != NULL)
     {
         for (j = 0; j < argc - 1; j++) 
         {
+            // send message to pipe
             write(fd[j][1], message, strlen(message));
         }
     }
@@ -117,7 +102,6 @@ int main(int argc, char *argv[])
     {
         close(fd[j][1]);
     }
-
     // wait all processes
     while (wait(&state) == -1)
     {
