@@ -16,6 +16,8 @@
 #include <string.h>
 #include <sys/wait.h>
 
+#define maxNum_eachLine 1024
+
 void read_script_file(char *scriptName);
 
 int main(int argc, char *argv[])
@@ -41,11 +43,11 @@ int main(int argc, char *argv[])
 //------------------------------------------------------
 void read_script_file(char *scriptName)
 {
-    //read script file
+    // read script file
     FILE *fp = NULL;
-    char buffer[maxNum_eachLine];	
+    char buffer[maxNum_eachLine];
     fp = fopen(scriptName, "r");
-    //exception
+    // exception
     if (fp == NULL)
     {
         perror("Failed to open script file!\n");
@@ -54,10 +56,10 @@ void read_script_file(char *scriptName)
 
     while (!feof(fp))									
 	{ 
-        //read each line
+        // read each line
 		fgets(buffer, maxNum_eachLine, fp);
         char *line[maxNum_eachLine];	
-        //split the line and get command
+        // split the line and get command
         char *temp;
         int index = 0;
         int length = 0;
@@ -68,11 +70,11 @@ void read_script_file(char *scriptName)
             printf("(%s)\n", line[index]);
             index++;
             length++;
-            //next
-            temp = strtok(NULL, " \t\r\n");//如果是结尾的string，里面会自带一个\n\0
+            // next
+            temp = strtok(NULL, " \t\r\n");// 如果是结尾的string，里面会自带一个\n\0
         }
         parse_line(line, length);
-        //printf("**** %s \n", buffer);
+        // printf("**** %s \n", buffer);
         printf("\n"); 	   			
 	}
 	fclose(fp);  
