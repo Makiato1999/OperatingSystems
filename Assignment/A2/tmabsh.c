@@ -28,8 +28,10 @@ boolean isPipe;
 #pragma pack(pop)
 
 void read_script_file(char *scriptName);
-void parse_buffer(char buffer[], int length);
-void parse_commandLine(char line[], int length);
+void parse_buffer(char buffer[]);
+void parse_commandLine_noPipe(char *commandLine);
+void redirection_implement(char *sub_commandLine[], char *redirectFile, int length);
+void exe_func(char *execvp_command[]);
 
 int main(int argc, char *argv[])
 {
@@ -69,8 +71,9 @@ void read_script_file(char *scriptName)
     {
         // read each line
         fgets(buffer, maxNum_eachLine, fp);
+        // @test:
         printf("buffer: %s\n", buffer);
-        parse_buffer(buffer, strlen(buffer));
+        parse_buffer(buffer);
         printf("\n");
     }
     fclose(fp);
@@ -82,38 +85,30 @@ void read_script_file(char *scriptName)
 // PURPOSE: parse buffer stream
 // INPUT PARAMETERS:
 //	   char buffer[]
-//     int length
 //------------------------------------------------------
-void parse_buffer(char buffer[], int length)
+void parse_buffer(char buffer[])
 {
-    // calculate number of pipes in command line
-    int numOfPipe = 0;
-    int i;
-    for (i = 0; i < length; i++)
+    char *commandLine[maxNum_eachLine];
+    int counter = 0;
+    int numOfPipe = -1;
+    char *p;
+    // whether there is "|" in command line
+    p = strtok(buffer, "|");
+    while (p != NULL)
     {
-        if (buffer[i] == '|')
-        {
-            numOfPipe++;
-            printf("numOfPipe: %d\n", numOfPipe);
-        }
+        commandLine[counter] = p;
+        numOfPipe++;
+        // @test:
+        // printf("command %d: %s\n", counter, commandLine[counter]);
+        counter++;
+        p = strtok(NULL, "|");
     }
-    // return the index of the pipe in command line
-    int indexOfpipe[numOfPipe];
-    int index = 0;
-    for (i = 0; i < length; i++)
-    {
-        if (buffer[i] == '|')
-        {
-            indexOfpipe[index] = i;
-            printf("indexOfPipe: %d\n", indexOfpipe[index]);
-            index++;
-        }
-    }
+
     // if there is no pipe in command line
     if (numOfPipe == 0)
     {
-        // parse the command line
-        parse_commandLine(buffer, length);
+        // commandLine is like "head -5 words > first5words.txt"
+        parse_commandLine_noPipe(commandLine[counter - 1]);
     }
     // if there are pipes in command line
     else if (numOfPipe > 0)
@@ -122,49 +117,137 @@ void parse_buffer(char buffer[], int length)
     }
 }
 //------------------------------------------------------
-// myRoutine: parse_commandLine
+// myRoutine: parse_commandLine_noPipe
 //
-// PURPOSE: parse command line
+// PURPOSE: parse command line without pipe
 // INPUT PARAMETERS:
-//	   char line[]
-//     int length
+//	   char *commandLine
 //------------------------------------------------------
-void parse_commandLine(char line[], int length)
+void parse_commandLine_noPipe(char *commandLine)
 {
-    int indexOfRedirect = 0;
-    // return the index of the pipe in command line
-    boolean isFind = false;
-    int i;
-    for (i = 0; i < length && !isFind; i++)
+    // whether there is "<" or ">"
+    // commandLine is like "head -5 words > first5words.txt"
+    // sub_commandLineis[0] is like "head" in "head -5 words > first5words.txt"
+    char *sub_commandLine[maxNum_eachLine];
+    char *commandKeyword;
+    char *redirectFile = "";
+    int counter = 0;
+    commandKeyword = strtok(commandLine, " \t\r\n");
+    while (commandKeyword != NULL)
     {
-        if (line[i] == '<' || line[i] == '>')
-        {
-            indexOfRedirect = i;
-            isFind = true;
-            printf("indexOfPipe: %d\n", indexOfRedirect);
-        }
+        sub_commandLine[counter] = commandKeyword;
+        // @test:
+        printf("sub_commandLine[%d]: %s\n", counter, sub_commandLine[counter]);
+        counter++;
+        commandKeyword = strtok(NULL, " \t\r\n");
     }
-    // if there is no redirect in command line
-    if (isFind == false)
-    {
-        
-    }
-    // if there is redirect in command line
-    else if (/* condition */)
-    {
-        /* code */
-    }
+    // sub_commandLine[counter] = NULL;
+    redirection_implement(sub_commandLine, redirectFile, counter);
 }
 //------------------------------------------------------
 // myRoutine: redirection_implement
 //
 // PURPOSE: check redirection sign
 // INPUT PARAMETERS:
-//	   char *line[]
-//     char *temp_array[]
-//     bool ifredirection
-//     int sign_index
+// char *sub_commandLine[]
+// char *redirectFile
 //------------------------------------------------------
-redirection_implement(line, temp_array2, ifredirection, sign_index)
+void redirection_implement(char *sub_commandLine[], char *redirectFile, int length)
 {
+    int fd;
+    int nfd;
+    int state;
+    char *execvpPath[maxNum_eachLine];
+    pid_t pid;
+    if ((pid = fork()) < 0)
+    {
+        perror("Failed to fork!\n");
+        exit(1);
+    }
+    if (pid == 0)
+    {
+        int j = 0;
+        int i = 0;
+        for (i = 0; i < length; i++)
+        {
+            // find the redirect file which is like "first5words.txt"
+            if (strcmp(sub_commandLine[i], ">") == 0)
+            {
+                redirectFile = (char *)malloc(strlen(sub_commandLine[i + 1]) * sizeof(char));
+                strcpy(redirectFile, sub_commandLine[i + 1]);
+                // @test:
+                printf("redirectFile: %s\n", redirectFile);
+                // execute redirect command
+                if ((fd = open(redirectFile, O_RDWR | O_CREAT, 0666)) < 0)
+                {
+                    perror("Failed to open file!\n");
+                    exit(1);
+                }
+                if ((nfd = dup2(fd, STDOUT_FILENO)) < 0)
+                {
+                    perror("Failed to redirect!\n");
+                    exit(1);
+                }
+                close(fd);
+                while (strcmp(sub_commandLine[j], ">") != 0)
+                {
+                    execvpPath[j] = sub_commandLine[j];
+                    j++;
+                }
+                exe_func(execvpPath);
+                // redirect done
+                free(redirectFile);
+                break;
+            }
+            else if (strcmp(sub_commandLine[i], "<") == 0)
+            {
+                redirectFile = (char *)malloc(strlen(sub_commandLine[i + 1]) * sizeof(char));
+                strcpy(redirectFile, sub_commandLine[i + 1]);
+                // @test:
+                printf("redirectFile: %s\n", redirectFile);
+                // execute redirect command
+                if ((fd = open(redirectFile, O_RDONLY, 7777)) < 0)
+                {
+                    perror("Failed to open file!\n");
+                    exit(1);
+                }
+                if ((nfd = dup2(fd, STDIN_FILENO)) < 0)
+                {
+                    perror("Failed to redirect!\n");
+                    exit(1);
+                }
+                close(fd);
+                while (strcmp(sub_commandLine[j], "<") != 0)
+                {
+                    execvpPath[j] = sub_commandLine[j];
+                    j++;
+                }
+                exe_func(execvpPath);
+                // redirect done
+                free(redirectFile);
+                break;
+            }
+        }
+        exit(0);
+    }
+    // wait all processes
+    while (wait(&state) == -1)
+    {
+        printf("wait failed\n");
+    }
+}
+//------------------------------------------------------
+// myRoutine: exe_func
+//
+// PURPOSE: implement exec function
+// INPUT PARAMETERS:
+//     char *execvp_command[]
+//------------------------------------------------------
+void exe_func(char *execvp_command[])
+{
+    if (execvp(execvp_command[0], execvp_command) < 0)
+    {
+        perror("Failed to execute!\n");
+        exit(1);
+    }
 }
