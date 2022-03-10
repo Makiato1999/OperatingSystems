@@ -13,7 +13,10 @@ LFLAGS =
 TARGET1 = tmabsh
 TARGET2 = touched.txt
 TARGET3 = first5words.txt
-TARGET4 = first5words.txt?
+TARGET4 = words
+TARGET5 = temp.txt
+TARGET6 = nonvoluntaryswitches.txt
+TARGET7 = test.txt
   
 all: $(TARGET1)
   
@@ -26,3 +29,6 @@ clean:
 	rm -rf *o $(TARGET2)
 	rm -rf *o $(TARGET3)
 	rm -rf *o $(TARGET4)
+	rm -rf *o $(TARGET5)
+	rm -rf *o $(TARGET6)
+	rm -rf *o $(TARGET7)
