@@ -14,8 +14,10 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <assert.h>
 
 #define maxNum_eachLine 100
+#define permission 0664
 
 #pragma pack(push)
 #pragma pack(1)
@@ -30,8 +32,11 @@ boolean isPipe;
 void read_script_file(char *scriptName);
 void parse_buffer(char buffer[]);
 void parse_commandLine_noPipe(char *commandLine);
+void parse_commandLine_pipes(char *commandLine[], int length);
 void redirection_implement(char *sub_commandLine[], int length);
+void pipe_implement(char *sub_commandLine[], int length);
 void exe_func(char *execvp_command[]);
+void trim(char *strIn, char *strOut);
 
 int main(int argc, char *argv[])
 {
@@ -90,31 +95,58 @@ void read_script_file(char *scriptName)
 void parse_buffer(char buffer[])
 {
     char *commandLine[maxNum_eachLine];
-    int counter = 0;
-    int numOfPipe = -1;
     char *p;
+    int counter = 0;
+    int numOfPipe = 0;
+    int length = 0;
+    boolean isFindPipe = false;
+    unsigned long i;
     // whether there is "|" in command line
-    p = strtok(buffer, "|");
-    while (p != NULL)
+    for (i = 0; i < strlen(buffer) && isFindPipe == false; i++)
     {
-        commandLine[counter] = p;
-        numOfPipe++;
-        // @test:
-        // printf("command %d: %s\n", counter, commandLine[counter]);
-        counter++;
-        p = strtok(NULL, "|");
+        if (buffer[i] == '|')
+        {
+            isFindPipe = true;
+        }
+    }
+
+    if (isFindPipe == false)
+    {
+        printf("notFindPipe!\n");
+        p = strtok(buffer, "|");
+        commandLine[0] = p;
+        numOfPipe = 0;
+        length = 1;
+    }
+    else if (isFindPipe == true)
+    {
+        printf("isFindPipe!\n");
+        // whether there is "|" in command line
+        p = strtok(buffer, "|");
+        while (p != NULL)
+        {
+            commandLine[counter] = p;
+            length++;
+            numOfPipe++;
+            // @test:
+            // printf("command %d: %s\n", counter, commandLine[counter]);
+            counter++;
+            p = strtok(NULL, "|");
+        }
     }
 
     // if there is no pipe in command line
     if (numOfPipe == 0)
     {
         // commandLine is like "head -5 words > first5words.txt"
-        parse_commandLine_noPipe(commandLine[counter - 1]);
+        parse_commandLine_noPipe(commandLine[0]);
     }
     // if there are pipes in command line
     else if (numOfPipe > 0)
     {
-        // create processes by using pipe numbers
+        // commandLine is like "sort -R < words | head -5 > rand5words.txt"
+        // "sort -R < words | head -5 | sort -d > randsort5words.txt"
+        parse_commandLine_pipes(commandLine, length);
     }
 }
 //------------------------------------------------------
@@ -137,7 +169,7 @@ void parse_commandLine_noPipe(char *commandLine)
     {
         sub_commandLine[counter] = commandKeyword;
         // @test:
-        printf("sub_commandLine[%d]: %s\n", counter, sub_commandLine[counter]);
+        printf("sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
         counter++;
         commandKeyword = strtok(NULL, " \t\r\n");
     }
@@ -145,9 +177,107 @@ void parse_commandLine_noPipe(char *commandLine)
     redirection_implement(sub_commandLine, counter);
 }
 //------------------------------------------------------
+// myRoutine: parse_commandLine_pipes
+//
+// PURPOSE: parse command line with pipes
+// INPUT PARAMETERS:
+//	   char *commandLine[]
+//     int length
+//------------------------------------------------------
+void parse_commandLine_pipes(char *commandLine[], int length)
+{
+    // commandLine is like "sort -R < words | head -5 > rand5words.txt"
+    // "sort -R < words | head -5 | sort -d > randsort5words.txt"
+    // commandLine[0] is like "sort -R < words "
+    /*
+    for (i = 0; i < length; i++)
+    {
+        // get updated commandLine without extra spaces
+        char updated_commandLine[maxNum_eachLine];
+        trim(commandLine[i], updated_commandLine);
+        commandLine[i] = updated_commandLine;
+        // @test:
+        printf("sub_commandLine[%d]: (%s)\n", i, commandLine[i]);
+    }*/
+
+    char *recursionArr[maxNum_eachLine];
+    char updated_commandLine[maxNum_eachLine];
+    trim(commandLine[0], updated_commandLine);
+    commandLine[0] = updated_commandLine;
+    printf("curr length: %d, commandLine[0]: (%s)\n", length, commandLine[0]);
+    int i;
+    for (i = 1; i < length; i++)
+    {
+        trim(commandLine[i], updated_commandLine);
+        recursionArr[i - 1] = updated_commandLine;
+        // @test:
+        printf("curr length: %d, recursionArr[%d]: (%s)\n", length, i - 1, recursionArr[i - 1]);
+    }
+    /*
+    pid_t pid;
+    //pid_t next_pid;
+    //int state;
+    // open pipes
+    int fd[2];
+    int result;
+    if ((result = pipe(fd)) == -1)
+    {
+        perror("Failed to create pipe!\n");
+        exit(1);
+    }
+    // create processes
+    pid = fork();
+    if (pid == -1)
+    {
+        perror("Failed to fork!\n");
+        exit(1);
+    }
+    else if (pid == 0)
+    {
+        close(fd[0]);
+        dup2(fd[1], STDOUT_FILENO);
+        close(fd[1]);
+        parse_commandLine_noPipe(commandLine[0]);
+    }
+    else
+    {
+
+        next_pid = fork();
+        if (next_pid == -1)
+        {
+            perror("Failed to fork!\n");
+            exit(1);
+        }
+        else if (next_pid == 0)
+        {
+            close(fd[1]);
+            dup2(fd[0], STDIN_FILENO);
+            close(fd[0]);
+
+            if (length == 2)
+            {
+                // commandLine is like "sort -R < words | head -5 > rand5words.txt"
+                parse_commandLine_noPipe(commandLine[1]);
+            }
+            else if (length > 2)
+            {
+                // "sort -R < words | head -5 | sort -d > randsort5words.txt"
+                parse_commandLine_pipes(recursionArr, length - 1);
+            }
+        }
+        close(fd[0]);
+        close(fd[1]);
+        // wait all processes
+        while (wait(&state) == -1)
+        {
+            perror("wait failed\n");
+        }
+    }*/
+}
+//------------------------------------------------------
 // myRoutine: redirection_implement
 //
-// PURPOSE: check redirection sign
+// PURPOSE: check redirection sign and process
 // INPUT PARAMETERS:
 //	   char *sub_commandLine[]
 //	   int length
@@ -179,7 +309,7 @@ void redirection_implement(char *sub_commandLine[], int length)
                 strcpy(redirectFile, sub_commandLine[i + 1]);
                 // @test:
                 printf("redirectFile: %s\n", redirectFile);
-                
+
                 // execute redirect command
                 if ((fd = open(redirectFile, O_RDWR | O_CREAT, 0666)) < 0)
                 {
@@ -263,6 +393,25 @@ void redirection_implement(char *sub_commandLine[], int length)
     }
 }
 //------------------------------------------------------
+// myRoutine: pipe_implement
+//
+// PURPOSE: check pipe sign and process
+// INPUT PARAMETERS:
+//	   char *sub_commandLine[]
+//	   int length
+//------------------------------------------------------
+/*
+void pipe_implement(char *sub_commandLine[], int length)
+{
+    char *tempFifo = "./myfifo";
+    int namedPipe = mkfifo(tempFifo, permission);
+    if (namedPipe < 0)
+    {
+        perror("Failed to mkfifo!\n");
+        exit(1);
+    }
+}*/
+//------------------------------------------------------
 // myRoutine: exe_func
 //
 // PURPOSE: implement exec function
@@ -276,4 +425,27 @@ void exe_func(char *execvp_command[])
         perror("Failed to execute!\n");
         exit(1);
     }
+}
+//------------------------------------------------------
+// myRoutine: trim
+//
+// PURPOSE: remove space from head and tail for a String
+// INPUT PARAMETERS:
+//     char *strIn, char *strOut
+//------------------------------------------------------
+void trim(char *strIn, char *strOut)
+{
+    int i = 0;
+    int j;
+    j = strlen(strIn) - 1;
+    while (strIn[i] == ' ')
+    {
+        ++i;
+    }
+    while (strIn[j] == ' ')
+    {
+        --j;
+    }
+    strncpy(strOut, strIn + i, j - i + 1);
+    strOut[j - i + 1] = '\0';
 }
