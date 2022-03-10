@@ -30,7 +30,7 @@ boolean isPipe;
 void read_script_file(char *scriptName);
 void parse_buffer(char buffer[]);
 void parse_commandLine_noPipe(char *commandLine);
-void redirection_implement(char *sub_commandLine[], char *redirectFile, int length);
+void redirection_implement(char *sub_commandLine[], int length);
 void exe_func(char *execvp_command[]);
 
 int main(int argc, char *argv[])
@@ -58,7 +58,7 @@ void read_script_file(char *scriptName)
 {
     // read script file
     FILE *fp = NULL;
-    char buffer[maxNum_eachLine];
+    char p[maxNum_eachLine];
     fp = fopen(scriptName, "r");
     // exception
     if (fp == NULL)
@@ -70,14 +70,15 @@ void read_script_file(char *scriptName)
     while (!feof(fp))
     {
         // read each line
-        fgets(buffer, maxNum_eachLine, fp);
+        fgets(p, maxNum_eachLine, fp);
         // @test:
+        char *buffer;
+        buffer = strtok(p, "\t\r\n");
         printf("buffer: %s\n", buffer);
         parse_buffer(buffer);
         printf("\n");
     }
     fclose(fp);
-    printf("\n");
 }
 //------------------------------------------------------
 // myRoutine: parse_buffer
@@ -130,7 +131,6 @@ void parse_commandLine_noPipe(char *commandLine)
     // sub_commandLineis[0] is like "head" in "head -5 words > first5words.txt"
     char *sub_commandLine[maxNum_eachLine];
     char *commandKeyword;
-    char *redirectFile = "";
     int counter = 0;
     commandKeyword = strtok(commandLine, " \t\r\n");
     while (commandKeyword != NULL)
@@ -142,7 +142,7 @@ void parse_commandLine_noPipe(char *commandLine)
         commandKeyword = strtok(NULL, " \t\r\n");
     }
     // sub_commandLine[counter] = NULL;
-    redirection_implement(sub_commandLine, redirectFile, counter);
+    redirection_implement(sub_commandLine, counter);
 }
 //------------------------------------------------------
 // myRoutine: redirection_implement
@@ -152,12 +152,9 @@ void parse_commandLine_noPipe(char *commandLine)
 // char *sub_commandLine[]
 // char *redirectFile
 //------------------------------------------------------
-void redirection_implement(char *sub_commandLine[], char *redirectFile, int length)
+void redirection_implement(char *sub_commandLine[], int length)
 {
-    int fd;
-    int nfd;
     int state;
-    char *execvpPath[maxNum_eachLine];
     pid_t pid;
     if ((pid = fork()) < 0)
     {
@@ -166,9 +163,14 @@ void redirection_implement(char *sub_commandLine[], char *redirectFile, int leng
     }
     if (pid == 0)
     {
+        int fd;
+        int nfd;
+        boolean isFind = false;
+        char *execvpPath[maxNum_eachLine];
+        char *redirectFile = "";
         int j = 0;
         int i = 0;
-        for (i = 0; i < length; i++)
+        for (i = 0; (i < length) && (isFind == false); i++)
         {
             // find the redirect file which is like "first5words.txt"
             if (strcmp(sub_commandLine[i], ">") == 0)
@@ -177,6 +179,7 @@ void redirection_implement(char *sub_commandLine[], char *redirectFile, int leng
                 strcpy(redirectFile, sub_commandLine[i + 1]);
                 // @test:
                 printf("redirectFile: %s\n", redirectFile);
+                
                 // execute redirect command
                 if ((fd = open(redirectFile, O_RDWR | O_CREAT, 0666)) < 0)
                 {
@@ -194,10 +197,15 @@ void redirection_implement(char *sub_commandLine[], char *redirectFile, int leng
                     execvpPath[j] = sub_commandLine[j];
                     j++;
                 }
-                exe_func(execvpPath);
-                // redirect done
                 free(redirectFile);
-                break;
+                isFind = true;
+
+                if (execvp(execvpPath[0], execvpPath) < 0)
+                {
+                    perror("Failed to execute!\n");
+                    exit(1);
+                }
+                // redirect done
             }
             else if (strcmp(sub_commandLine[i], "<") == 0)
             {
@@ -222,10 +230,28 @@ void redirection_implement(char *sub_commandLine[], char *redirectFile, int leng
                     execvpPath[j] = sub_commandLine[j];
                     j++;
                 }
-                exe_func(execvpPath);
-                // redirect done
                 free(redirectFile);
-                break;
+                isFind = true;
+
+                if (execvp(execvpPath[0], execvpPath) < 0)
+                {
+                    perror("Failed to execute!\n");
+                    exit(1);
+                }
+                // redirect done
+            }
+        }
+        if (isFind == false)
+        {
+            while (sub_commandLine[j] != NULL)
+            {
+                execvpPath[j] = sub_commandLine[j];
+                j++;
+            }
+            if (execvp(execvpPath[0], execvpPath) < 0)
+            {
+                perror("Failed to execute!\n");
+                exit(1);
             }
         }
         exit(0);
@@ -233,7 +259,7 @@ void redirection_implement(char *sub_commandLine[], char *redirectFile, int leng
     // wait all processes
     while (wait(&state) == -1)
     {
-        printf("wait failed\n");
+        perror("wait failed\n");
     }
 }
 //------------------------------------------------------
