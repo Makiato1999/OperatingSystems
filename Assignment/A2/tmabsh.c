@@ -149,8 +149,8 @@ void parse_commandLine_noPipe(char *commandLine)
 //
 // PURPOSE: check redirection sign
 // INPUT PARAMETERS:
-// char *sub_commandLine[]
-// char *redirectFile
+//	   char *sub_commandLine[]
+//	   int length
 //------------------------------------------------------
 void redirection_implement(char *sub_commandLine[], int length)
 {
