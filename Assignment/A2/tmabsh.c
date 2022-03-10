@@ -116,14 +116,18 @@ void parse_buffer(char buffer[])
         p = strtok(buffer, "|");
         commandLine[0] = p;
         numOfPipe = 0;
-        length = 1;
+        length = 0;
     }
     else if (isFindPipe == true)
     {
         printf("isFindPipe!\n");
         // whether there is "|" in command line
         p = strtok(buffer, "|");
-        while (p != NULL)
+        commandLine[counter] = p;
+        counter++;
+        length++;
+        numOfPipe++;
+        while ((p = strtok(NULL, "|")) != NULL)
         {
             commandLine[counter] = p;
             length++;
@@ -131,8 +135,9 @@ void parse_buffer(char buffer[])
             // @test:
             // printf("command %d: %s\n", counter, commandLine[counter]);
             counter++;
-            p = strtok(NULL, "|");
         }
+        // @test
+        // printf("length: %d!\n", length);
     }
 
     // if there is no pipe in command line
@@ -186,25 +191,15 @@ void parse_commandLine_noPipe(char *commandLine)
 //------------------------------------------------------
 void parse_commandLine_pipes(char *commandLine[], int length)
 {
-    // commandLine is like "sort -R < words | head -5 > rand5words.txt"
-    // "sort -R < words | head -5 | sort -d > randsort5words.txt"
-    // commandLine[0] is like "sort -R < words "
-    /*
-    for (i = 0; i < length; i++)
-    {
-        // get updated commandLine without extra spaces
-        char updated_commandLine[maxNum_eachLine];
-        trim(commandLine[i], updated_commandLine);
-        commandLine[i] = updated_commandLine;
-        // @test:
-        printf("sub_commandLine[%d]: (%s)\n", i, commandLine[i]);
-    }*/
-
     char *recursionArr[maxNum_eachLine];
+    // for avoiding commandLine[0] is like "sort -R < words ", we need to polish it
+    // get updated commandLine without extra spaces
     char updated_commandLine[maxNum_eachLine];
     trim(commandLine[0], updated_commandLine);
     commandLine[0] = updated_commandLine;
+    // @test
     printf("curr length: %d, commandLine[0]: (%s)\n", length, commandLine[0]);
+
     int i;
     for (i = 1; i < length; i++)
     {
@@ -214,10 +209,11 @@ void parse_commandLine_pipes(char *commandLine[], int length)
         printf("curr length: %d, recursionArr[%d]: (%s)\n", length, i - 1, recursionArr[i - 1]);
     }
     /*
+    // 关闭下面就能跑
     pid_t pid;
-    //pid_t next_pid;
-    //int state;
-    // open pipes
+    pid_t next_pid;
+    int state;
+    //  open pipes
     int fd[2];
     int result;
     if ((result = pipe(fd)) == -1)
@@ -241,7 +237,6 @@ void parse_commandLine_pipes(char *commandLine[], int length)
     }
     else
     {
-
         next_pid = fork();
         if (next_pid == -1)
         {
@@ -257,7 +252,7 @@ void parse_commandLine_pipes(char *commandLine[], int length)
             if (length == 2)
             {
                 // commandLine is like "sort -R < words | head -5 > rand5words.txt"
-                parse_commandLine_noPipe(commandLine[1]);
+                parse_commandLine_noPipe(recursionArr[0]);
             }
             else if (length > 2)
             {
