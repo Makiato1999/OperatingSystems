@@ -170,14 +170,18 @@ void parse_commandLine_noPipe(char *commandLine)
     char *commandKeyword;
     int counter = 0;
     commandKeyword = strtok(commandLine, " \t\r\n");
-    while (commandKeyword != NULL)
+    sub_commandLine[counter] = commandKeyword;
+    // @test:
+    printf("sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
+    counter++;
+    while ((commandKeyword = strtok(NULL, " \t\r\n")) != NULL)
     {
         sub_commandLine[counter] = commandKeyword;
         // @test:
         printf("sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
         counter++;
-        commandKeyword = strtok(NULL, " \t\r\n");
     }
+    sub_commandLine[counter] = NULL;
     // sub_commandLine[counter] = NULL;
     redirection_implement(sub_commandLine, counter);
 }
@@ -203,16 +207,16 @@ void parse_commandLine_pipes(char *commandLine[], int length)
     int i;
     for (i = 1; i < length; i++)
     {
+        char updated_commandLine[maxNum_eachLine];
         trim(commandLine[i], updated_commandLine);
         recursionArr[i - 1] = updated_commandLine;
         // @test:
         printf("curr length: %d, recursionArr[%d]: (%s)\n", length, i - 1, recursionArr[i - 1]);
     }
-    /*
+
     // 关闭下面就能跑
     pid_t pid;
     pid_t next_pid;
-    int state;
     //  open pipes
     int fd[2];
     int result;
@@ -222,28 +226,32 @@ void parse_commandLine_pipes(char *commandLine[], int length)
         exit(1);
     }
     // create processes
-    pid = fork();
-    if (pid == -1)
+    if ((pid = fork()) < 0)
     {
         perror("Failed to fork!\n");
         exit(1);
     }
-    else if (pid == 0)
+    if (pid == 0)
     {
         close(fd[0]);
-        dup2(fd[1], STDOUT_FILENO);
+        // dup2(fd[1], STDOUT_FILENO);
         close(fd[1]);
+        // commandLine is like "sort -R < words | head -5 > rand5words.txt"
+        // commandLine[0] is like "sort -R < words"
+        // @test
+        printf("+++now commandLine[0]: (%s)\n", commandLine[0]);
         parse_commandLine_noPipe(commandLine[0]);
+        exit(0);
     }
     else
     {
-        next_pid = fork();
-        if (next_pid == -1)
+        // int state;
+        if ((next_pid = fork()) < 0)
         {
             perror("Failed to fork!\n");
             exit(1);
         }
-        else if (next_pid == 0)
+        if (next_pid == 0)
         {
             close(fd[1]);
             dup2(fd[0], STDIN_FILENO);
@@ -251,7 +259,7 @@ void parse_commandLine_pipes(char *commandLine[], int length)
 
             if (length == 2)
             {
-                // commandLine is like "sort -R < words | head -5 > rand5words.txt"
+                // recursionArr[0] is like "head -5 > rand5words.txt"
                 parse_commandLine_noPipe(recursionArr[0]);
             }
             else if (length > 2)
@@ -260,14 +268,21 @@ void parse_commandLine_pipes(char *commandLine[], int length)
                 parse_commandLine_pipes(recursionArr, length - 1);
             }
         }
-        close(fd[0]);
-        close(fd[1]);
-        // wait all processes
-        while (wait(&state) == -1)
+        else
         {
-            perror("wait failed\n");
+            close(fd[0]);
+            close(fd[1]);
+            wait(NULL);
+            /*
+            // wait all processes
+            while (wait(&state) == -1)
+            {
+                perror("wait failed\n");
+            }*/
         }
-    }*/
+        wait(NULL);
+        printf("Successed to execute!\n");
+    }
 }
 //------------------------------------------------------
 // myRoutine: redirection_implement
@@ -322,14 +337,11 @@ void redirection_implement(char *sub_commandLine[], int length)
                     execvpPath[j] = sub_commandLine[j];
                     j++;
                 }
+                execvpPath[j] = NULL;
                 free(redirectFile);
                 isFind = true;
 
-                if (execvp(execvpPath[0], execvpPath) < 0)
-                {
-                    perror("Failed to execute!\n");
-                    exit(1);
-                }
+                exe_func(execvpPath);
                 // redirect done
             }
             else if (strcmp(sub_commandLine[i], "<") == 0)
@@ -355,29 +367,17 @@ void redirection_implement(char *sub_commandLine[], int length)
                     execvpPath[j] = sub_commandLine[j];
                     j++;
                 }
+                execvpPath[j] = NULL;
                 free(redirectFile);
                 isFind = true;
 
-                if (execvp(execvpPath[0], execvpPath) < 0)
-                {
-                    perror("Failed to execute!\n");
-                    exit(1);
-                }
+                exe_func(execvpPath);
                 // redirect done
             }
         }
         if (isFind == false)
         {
-            while (sub_commandLine[j] != NULL)
-            {
-                execvpPath[j] = sub_commandLine[j];
-                j++;
-            }
-            if (execvp(execvpPath[0], execvpPath) < 0)
-            {
-                perror("Failed to execute!\n");
-                exit(1);
-            }
+            exe_func(sub_commandLine);
         }
         exit(0);
     }
