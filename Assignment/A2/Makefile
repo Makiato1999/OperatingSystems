@@ -17,6 +17,7 @@ TARGET4 = words
 TARGET5 = temp.txt
 TARGET6 = nonvoluntaryswitches.txt
 TARGET7 = test.txt
+TARGET8 = rand5words.txt
   
 all: $(TARGET1)
   
@@ -32,3 +33,4 @@ clean:
 	rm -rf *o $(TARGET5)
 	rm -rf *o $(TARGET6)
 	rm -rf *o $(TARGET7)
+	rm -rf *o $(TARGET8)
