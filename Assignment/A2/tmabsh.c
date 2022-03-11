@@ -79,7 +79,7 @@ void read_script_file(char *scriptName)
         // @test:
         char *buffer;
         buffer = strtok(p, "\t\r\n");
-        printf("buffer: %s\n", buffer);
+        printf("CommandLine: %s\n", buffer);
         parse_buffer(buffer);
         printf("\n");
     }
@@ -112,7 +112,8 @@ void parse_buffer(char buffer[])
 
     if (isFindPipe == false)
     {
-        printf("notFindPipe!\n");
+        // @test:
+        // printf("notFindPipe!\n");
         p = strtok(buffer, "|");
         commandLine[0] = p;
         numOfPipe = 0;
@@ -120,7 +121,8 @@ void parse_buffer(char buffer[])
     }
     else if (isFindPipe == true)
     {
-        printf("isFindPipe!\n");
+        // @test:
+        // printf("isFindPipe!\n");
         // whether there is "|" in command line
         p = strtok(buffer, "|");
         commandLine[counter] = p;
@@ -172,13 +174,13 @@ void parse_commandLine_noPipe(char *commandLine)
     commandKeyword = strtok(commandLine, " \t\r\n");
     sub_commandLine[counter] = commandKeyword;
     // @test:
-    printf("sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
+    printf("- sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
     counter++;
     while ((commandKeyword = strtok(NULL, " \t\r\n")) != NULL)
     {
         sub_commandLine[counter] = commandKeyword;
         // @test:
-        printf("sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
+        printf("- sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
         counter++;
     }
     sub_commandLine[counter] = NULL;
@@ -214,11 +216,11 @@ void parse_commandLine_pipes(char *commandLine[], int length)
         printf("curr length: %d, recursionArr[%d]: (%s)\n", length, i - 1, recursionArr[i - 1]);
     }
 
-    // 关闭下面就能跑
     pid_t pid;
     pid_t next_pid;
     //  open pipes
     int fd[2];
+    int state;
     int result;
     if ((result = pipe(fd)) == -1)
     {
@@ -234,12 +236,15 @@ void parse_commandLine_pipes(char *commandLine[], int length)
     if (pid == 0)
     {
         close(fd[0]);
-        // dup2(fd[1], STDOUT_FILENO);
+        int nfd;
+        if ((nfd = dup2(fd[1], STDOUT_FILENO)) < 0)
+        {
+            perror("Failed to dup2 redirect!\n");
+            exit(1);
+        }
         close(fd[1]);
         // commandLine is like "sort -R < words | head -5 > rand5words.txt"
         // commandLine[0] is like "sort -R < words"
-        // @test
-        printf("+++now commandLine[0]: (%s)\n", commandLine[0]);
         parse_commandLine_noPipe(commandLine[0]);
         exit(0);
     }
@@ -254,7 +259,12 @@ void parse_commandLine_pipes(char *commandLine[], int length)
         if (next_pid == 0)
         {
             close(fd[1]);
-            dup2(fd[0], STDIN_FILENO);
+            int nfd;
+            if ((nfd = dup2(fd[0], STDIN_FILENO)) < 0)
+            {
+                perror("Failed to dup2 redirect!\n");
+                exit(1);
+            }
             close(fd[0]);
 
             if (length == 2)
@@ -267,21 +277,19 @@ void parse_commandLine_pipes(char *commandLine[], int length)
                 // "sort -R < words | head -5 | sort -d > randsort5words.txt"
                 parse_commandLine_pipes(recursionArr, length - 1);
             }
+            exit(0);
         }
         else
         {
             close(fd[0]);
             close(fd[1]);
-            wait(NULL);
-            /*
-            // wait all processes
-            while (wait(&state) == -1)
-            {
-                perror("wait failed\n");
-            }*/
         }
-        wait(NULL);
-        printf("Successed to execute!\n");
+        // wait all processes
+        while (wait(&state) == -1)
+        {
+            perror("wait failed\n");
+        }
+        printf("\nSuccessed to execute all commands!\n");
     }
 }
 //------------------------------------------------------
