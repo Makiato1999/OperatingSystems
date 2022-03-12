@@ -34,7 +34,7 @@ void parse_buffer(char buffer[]);
 void parse_commandLine_noPipe(char *commandLine);
 void parse_commandLine_pipes(char *commandLine[], int length);
 void redirection_implement(char *sub_commandLine[], int length);
-void pipe_implement(char *sub_commandLine[], int length);
+void processSubstitution_implement(char *sub_commandLine);
 void exe_func(char *execvp_command[]);
 void trim(char *strIn, char *strOut);
 
@@ -165,27 +165,55 @@ void parse_buffer(char buffer[])
 //------------------------------------------------------
 void parse_commandLine_noPipe(char *commandLine)
 {
-    // whether there is "<" or ">"
-    // commandLine is like "head -5 words > first5words.txt"
-    // sub_commandLineis[0] is like "head" in "head -5 words > first5words.txt"
-    char *sub_commandLine[maxNum_eachLine];
-    char *commandKeyword;
-    int counter = 0;
-    commandKeyword = strtok(commandLine, " \t\r\n");
-    sub_commandLine[counter] = commandKeyword;
-    // @test:
-    printf("- sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
-    counter++;
-    while ((commandKeyword = strtok(NULL, " \t\r\n")) != NULL)
+    char *temp = (char *)malloc(strlen(commandLine) * sizeof(char));
+    strcpy(temp, commandLine);
+
+    // whether there is a process substitution
+    boolean isFindProcessSubstit = false;
+    unsigned long i;
+    for (i = 0; i < strlen(temp) && isFindProcessSubstit == false; i++)
     {
+        if (temp[i] == '(')
+        {
+            temp[i] = ' ';
+        }
+        else if (temp[i] == ')')
+        {
+            isFindProcessSubstit = true;
+            temp[i] = '\0';
+        }
+    }
+
+    if (isFindProcessSubstit == true)
+    {
+        // @test:
+        // printf("- changed commandLine: (%s)\n", temp);
+        processSubstitution_implement(temp);
+    }
+    else
+    {
+        // whether there is "<" or ">"
+        // commandLine is like "head -5 words > first5words.txt"
+        // sub_commandLineis[0] is like "head" in "head -5 words > first5words.txt"
+        char *sub_commandLine[maxNum_eachLine];
+        char *commandKeyword;
+        int counter = 0;
+        commandKeyword = strtok(commandLine, " \t\r\n");
         sub_commandLine[counter] = commandKeyword;
         // @test:
         printf("- sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
         counter++;
+        while ((commandKeyword = strtok(NULL, " \t\r\n")) != NULL)
+        {
+            sub_commandLine[counter] = commandKeyword;
+            // @test:
+            printf("- sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
+            counter++;
+        }
+        sub_commandLine[counter] = NULL;
+
+        redirection_implement(sub_commandLine, counter);
     }
-    sub_commandLine[counter] = NULL;
-    // sub_commandLine[counter] = NULL;
-    redirection_implement(sub_commandLine, counter);
 }
 //------------------------------------------------------
 // myRoutine: parse_commandLine_pipes
@@ -396,24 +424,56 @@ void redirection_implement(char *sub_commandLine[], int length)
     }
 }
 //------------------------------------------------------
-// myRoutine: pipe_implement
+// myRoutine: processSubstitution_implement
 //
-// PURPOSE: check pipe sign and process
+// PURPOSE: check process Substitution
 // INPUT PARAMETERS:
 //	   char *sub_commandLine[]
 //	   int length
 //------------------------------------------------------
-/*
-void pipe_implement(char *sub_commandLine[], int length)
+void processSubstitution_implement(char *commandLine)
 {
+    /*
     char *tempFifo = "./myfifo";
     int namedPipe = mkfifo(tempFifo, permission);
     if (namedPipe < 0)
     {
         perror("Failed to mkfifo!\n");
         exit(1);
+    }*/
+
+    char *sub_commandLine[maxNum_eachLine];
+    char *updated_sub_commandLine[maxNum_eachLine];
+    char *commandKeyword;
+    int counter = 0;
+    int i = 0;
+    // int signIndex = 0;
+    //  commandLine is like "head -5 < sort -R words"
+    commandKeyword = strtok(commandLine, " ");
+    sub_commandLine[counter] = commandKeyword;
+    // @test:
+    // printf("- sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
+    counter++;
+    while ((commandKeyword = strtok(NULL, " ")) != NULL)
+    {
+        sub_commandLine[counter] = commandKeyword;
+        // @test:
+        // printf("- sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
+        counter++;
     }
-}*/
+    while (strcmp(sub_commandLine[i], "<") != 0)
+    {
+        i++;
+    }
+    i++;
+    while (sub_commandLine[i] != NULL)
+    {
+        updated_sub_commandLine[i] = sub_commandLine[i];
+        printf("- updated_sub_commandLine[%d]: (%s)\n", i, updated_sub_commandLine[i]);
+        i++;
+    }
+    updated_sub_commandLine[i] = NULL;
+}
 //------------------------------------------------------
 // myRoutine: exe_func
 //
