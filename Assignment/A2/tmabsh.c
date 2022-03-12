@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <assert.h>
 
 #define maxNum_eachLine 100
@@ -428,27 +429,21 @@ void redirection_implement(char *sub_commandLine[], int length)
 //
 // PURPOSE: check process Substitution
 // INPUT PARAMETERS:
-//	   char *sub_commandLine[]
-//	   int length
+//	   char *commandLine
 //------------------------------------------------------
 void processSubstitution_implement(char *commandLine)
 {
-    /*
-    char *tempFifo = "./myfifo";
-    int namedPipe = mkfifo(tempFifo, permission);
-    if (namedPipe < 0)
-    {
-        perror("Failed to mkfifo!\n");
-        exit(1);
-    }*/
-
     char *sub_commandLine[maxNum_eachLine];
-    char *updated_sub_commandLine[maxNum_eachLine];
+    char *outside_sub_commandLine[maxNum_eachLine];
+    char *inside_sub_commandLine[maxNum_eachLine];
     char *commandKeyword;
     int counter = 0;
+    int index = 0;
     int i = 0;
-    // int signIndex = 0;
-    //  commandLine is like "head -5 < sort -R words"
+    // commandLine is like "head -5 < sort -R words"
+    // inside_sub_commandLine[0] is like "sort"
+    // inside_sub_commandLine[1] is like "-R"
+    // inside_sub_commandLine[2] is like "words"
     commandKeyword = strtok(commandLine, " ");
     sub_commandLine[counter] = commandKeyword;
     // @test:
@@ -463,16 +458,72 @@ void processSubstitution_implement(char *commandLine)
     }
     while (strcmp(sub_commandLine[i], "<") != 0)
     {
+        outside_sub_commandLine[i] = sub_commandLine[i];
+        printf("- outside_sub_commandLine[%d]: (%s)\n", i, outside_sub_commandLine[i]);
         i++;
     }
+    outside_sub_commandLine[i] = NULL;
     i++;
     while (sub_commandLine[i] != NULL)
     {
-        updated_sub_commandLine[i] = sub_commandLine[i];
-        printf("- updated_sub_commandLine[%d]: (%s)\n", i, updated_sub_commandLine[i]);
+        inside_sub_commandLine[index] = sub_commandLine[i];
+        printf("- inside_sub_commandLine[%d]: (%s)\n", index, inside_sub_commandLine[index]);
         i++;
+        index++;
     }
-    updated_sub_commandLine[i] = NULL;
+    inside_sub_commandLine[index] = NULL;
+
+    // execute
+    // open fifo
+    int fd;
+    int nfd;
+    int state;
+    const char *fifoName = "./temp";
+    int n;
+    if ((n = mkfifo(fifoName, S_IRUSR | S_IWUSR)) < 0)
+    {
+        perror("Failed to create fifo!\n");
+        exit(1);
+    }
+    pid_t pid;
+    if ((pid = fork()) < 0)
+    {
+        perror("Failed to fork!\n");
+        exit(1);
+    }
+    if (pid == 0)
+    {
+        if ((fd = open(fifoName, O_WRONLY)) == -1)
+        {
+            perror("Failed to open fifo!\n");
+        }
+        if ((nfd = dup2(fd, STDOUT_FILENO)) < 0)
+        {
+            perror("Failed to redirect!\n");
+            exit(1);
+        }
+        close(fd);
+        unlink(fifoName);
+        exe_func(inside_sub_commandLine);
+    }
+    // wait all processes
+    while (wait(&state) == -1)
+    {
+        perror("wait failed\n");
+    }
+
+    if ((fd = open(fifoName, O_RDONLY)) == -1)
+    {
+        perror("Failed to open fifo!\n");
+    }
+    if ((nfd = dup2(fd, STDIN_FILENO)) < 0)
+    {
+        perror("Failed to redirect!\n");
+        exit(1);
+    }
+    close(fd);
+    unlink(fifoName);
+    exe_func(outside_sub_commandLine);
 }
 //------------------------------------------------------
 // myRoutine: exe_func
