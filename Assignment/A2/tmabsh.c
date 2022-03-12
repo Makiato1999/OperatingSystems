@@ -202,13 +202,13 @@ void parse_commandLine_noPipe(char *commandLine)
         commandKeyword = strtok(commandLine, " \t\r\n");
         sub_commandLine[counter] = commandKeyword;
         // @test:
-        printf("- sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
+        // printf("- sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
         counter++;
         while ((commandKeyword = strtok(NULL, " \t\r\n")) != NULL)
         {
             sub_commandLine[counter] = commandKeyword;
             // @test:
-            printf("- sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
+            // printf("- sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
             counter++;
         }
         sub_commandLine[counter] = NULL;
@@ -233,7 +233,7 @@ void parse_commandLine_pipes(char *commandLine[], int length)
     trim(commandLine[0], updated_commandLine);
     commandLine[0] = updated_commandLine;
     // @test
-    printf("curr length: %d, commandLine[0]: (%s)\n", length, commandLine[0]);
+    // printf("curr length: %d, commandLine[0]: (%s)\n", length, commandLine[0]);
 
     int i;
     for (i = 1; i < length; i++)
@@ -242,7 +242,7 @@ void parse_commandLine_pipes(char *commandLine[], int length)
         trim(commandLine[i], updated_commandLine);
         recursionArr[i - 1] = updated_commandLine;
         // @test:
-        printf("curr length: %d, recursionArr[%d]: (%s)\n", length, i - 1, recursionArr[i - 1]);
+        // printf("curr length: %d, recursionArr[%d]: (%s)\n", length, i - 1, recursionArr[i - 1]);
     }
 
     pid_t pid;
@@ -355,7 +355,7 @@ void redirection_implement(char *sub_commandLine[], int length)
                 redirectFile = (char *)malloc(strlen(sub_commandLine[i + 1]) * sizeof(char));
                 strcpy(redirectFile, sub_commandLine[i + 1]);
                 // @test:
-                printf("redirectFile: %s\n", redirectFile);
+                // printf("redirectFile: %s\n", redirectFile);
 
                 // execute redirect command
                 if ((fd = open(redirectFile, O_RDWR | O_CREAT, 0666)) < 0)
@@ -386,7 +386,7 @@ void redirection_implement(char *sub_commandLine[], int length)
                 redirectFile = (char *)malloc(strlen(sub_commandLine[i + 1]) * sizeof(char));
                 strcpy(redirectFile, sub_commandLine[i + 1]);
                 // @test:
-                printf("redirectFile: %s\n", redirectFile);
+                // printf("redirectFile: %s\n", redirectFile);
                 // execute redirect command
                 if ((fd = open(redirectFile, O_RDONLY, 7777)) < 0)
                 {
@@ -459,7 +459,7 @@ void processSubstitution_implement(char *commandLine)
     while (strcmp(sub_commandLine[i], "<") != 0)
     {
         outside_sub_commandLine[i] = sub_commandLine[i];
-        printf("- outside_sub_commandLine[%d]: (%s)\n", i, outside_sub_commandLine[i]);
+        // printf("- outside_sub_commandLine[%d]: (%s)\n", i, outside_sub_commandLine[i]);
         i++;
     }
     outside_sub_commandLine[i] = NULL;
@@ -467,7 +467,7 @@ void processSubstitution_implement(char *commandLine)
     while (sub_commandLine[i] != NULL)
     {
         inside_sub_commandLine[index] = sub_commandLine[i];
-        printf("- inside_sub_commandLine[%d]: (%s)\n", index, inside_sub_commandLine[index]);
+        // printf("- inside_sub_commandLine[%d]: (%s)\n", index, inside_sub_commandLine[index]);
         i++;
         index++;
     }
