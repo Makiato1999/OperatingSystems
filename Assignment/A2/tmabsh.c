@@ -304,7 +304,8 @@ void parse_commandLine_pipes(char *commandLine[], int length)
             else if (length > 2)
             {
                 // "sort -R < words | head -5 | sort -d > randsort5words.txt"
-                parse_commandLine_pipes(recursionArr, length - 1);
+                // recursion doesn't work
+                // parse_commandLine_pipes(recursionArr, length - 1);
             }
             exit(0);
         }
@@ -318,7 +319,6 @@ void parse_commandLine_pipes(char *commandLine[], int length)
         {
             perror("wait failed\n");
         }
-        printf("\nSuccessed to execute all commands!\n");
     }
 }
 //------------------------------------------------------
@@ -444,12 +444,12 @@ void processSubstitution_implement(char *commandLine)
     // inside_sub_commandLine[0] is like "sort"
     // inside_sub_commandLine[1] is like "-R"
     // inside_sub_commandLine[2] is like "words"
-    commandKeyword = strtok(commandLine, " ");
+    commandKeyword = strtok(commandLine, " \t\r\n");
     sub_commandLine[counter] = commandKeyword;
     // @test:
     // printf("- sub_commandLine[%d]: (%s)\n", counter, sub_commandLine[counter]);
     counter++;
-    while ((commandKeyword = strtok(NULL, " ")) != NULL)
+    while ((commandKeyword = strtok(NULL, " \t\r\n")) != NULL)
     {
         sub_commandLine[counter] = commandKeyword;
         // @test:
@@ -477,14 +477,11 @@ void processSubstitution_implement(char *commandLine)
     // open fifo
     int fd;
     int nfd;
-    int state;
-    const char *fifoName = "./temp";
-    int n;
-    if ((n = mkfifo(fifoName, S_IRUSR | S_IWUSR)) < 0)
-    {
-        perror("Failed to create fifo!\n");
-        exit(1);
-    }
+    //int state;
+    const char *FIFO = "fifoA2";
+    unlink(FIFO);
+    mkfifo(FIFO, S_IRUSR | S_IWUSR);
+
     pid_t pid;
     if ((pid = fork()) < 0)
     {
@@ -493,7 +490,7 @@ void processSubstitution_implement(char *commandLine)
     }
     if (pid == 0)
     {
-        if ((fd = open(fifoName, O_WRONLY)) == -1)
+        if ((fd = open(FIFO, O_WRONLY)) == -1)
         {
             perror("Failed to open fifo!\n");
         }
@@ -503,16 +500,11 @@ void processSubstitution_implement(char *commandLine)
             exit(1);
         }
         close(fd);
-        unlink(fifoName);
         exe_func(inside_sub_commandLine);
     }
-    // wait all processes
-    while (wait(&state) == -1)
-    {
-        perror("wait failed\n");
-    }
-
-    if ((fd = open(fifoName, O_RDONLY)) == -1)
+    usleep(200);
+    
+    if ((fd = open(FIFO, O_RDONLY)) == -1)
     {
         perror("Failed to open fifo!\n");
     }
@@ -522,7 +514,8 @@ void processSubstitution_implement(char *commandLine)
         exit(1);
     }
     close(fd);
-    unlink(fifoName);
+    wait(NULL);
+    unlink(FIFO);
     exe_func(outside_sub_commandLine);
 }
 //------------------------------------------------------
