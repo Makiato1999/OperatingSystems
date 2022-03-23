@@ -70,20 +70,22 @@ int main(void)
 {
     // get standard input
     char message[maxNum_eachLine];
-    pthread_mutex_lock(&mutex);
-    stdin_done = 0;
-    fgets(message, maxNum_eachLine, stdin);
-    printf("Your input is: %s\n", message);
-    // update status
-    stdin_done = 1;
-    pthread_cond_signal(&cond);
-    pthread_mutex_unlock(&mutex);
+    while (fgets(message, maxNum_eachLine, stdin))
+    {
+        pthread_mutex_lock(&mutex);
+        stdin_done = 0;
+        printf("Your input is: %s\n", message);
+        // update status
+        stdin_done = 1;
+        pthread_cond_signal(&cond);
+        pthread_mutex_unlock(&mutex);
 
-    pthread_t P1, P2;
-    pthread_create(&P1, NULL, lowerCase_thread, message);
-    pthread_create(&P2, NULL, upperCase_thread, message);
-    pthread_join(P1, NULL);
-    pthread_join(P2, NULL);
+        pthread_t P1, P2;
+        pthread_create(&P1, NULL, lowerCase_thread, message);
+        pthread_create(&P2, NULL, upperCase_thread, message);
+        pthread_join(P1, NULL);
+        pthread_join(P2, NULL);
+    }
 
     return EXIT_SUCCESS;
 }
