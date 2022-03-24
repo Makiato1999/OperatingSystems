@@ -22,12 +22,15 @@ void *lowerCase_thread(void *arg)
     }
     char *original_message = arg;
     printf("In lowerCase thread: \n");
-    printf("- Your input: %s", original_message);
+    // printf("- Your input: %s", original_message);
     printf("- lowerCase for your input: ");
     unsigned long i;
     for (i = 0; i < strlen(original_message); i++)
     {
-        printf("%c", tolower(original_message[i]));
+        if (original_message[i] >= 'a' && original_message[i] <= 'z')
+        {
+            printf("%c", original_message[i]);
+        }
     }
     printf("\n");
     // update status
@@ -53,16 +56,18 @@ void *upperCase_thread(void *arg)
     }
     char *original_message = arg;
     printf("In upperCase thread: \n");
-    printf("- Your input: %s", original_message);
+    // printf("- Your input: %s", original_message);
     printf("- upperCase for your input: ");
     unsigned long i;
     for (i = 0; i < strlen(original_message); i++)
     {
-        printf("%c", toupper(original_message[i]));
+        if (original_message[i] >= 'A' && original_message[i] <= 'Z')
+        {
+            printf("%c", original_message[i]);
+        }
     }
     printf("\n");
     pthread_mutex_unlock(&mutex2);
-
     pthread_exit((void *)pthread_self());
 }
 
@@ -70,10 +75,11 @@ int main(void)
 {
     // get standard input
     char message[maxNum_eachLine];
-    while (fgets(message, maxNum_eachLine, stdin))
+    while (1)
     {
         pthread_mutex_lock(&mutex);
-        stdin_done = 0;
+        printf("--------------------------------------------\n");
+        fgets(message, maxNum_eachLine, stdin);
         printf("Your input is: %s\n", message);
         // update status
         stdin_done = 1;
@@ -85,6 +91,9 @@ int main(void)
         pthread_create(&P2, NULL, upperCase_thread, message);
         pthread_join(P1, NULL);
         pthread_join(P2, NULL);
+        // restore default
+        stdin_done = 0;
+        lowerCase_done = 0;
     }
 
     return EXIT_SUCCESS;
