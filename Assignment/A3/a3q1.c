@@ -16,21 +16,23 @@
 #include <sys/queue.h>
 #include <time.h>
 #include <assert.h>
+#include <stdatomic.h>
 // define global variable
-#define NANOS_PER_USEC 1000  // microsleep
-#define USEC_PER_SEC 1000000 // microsleep
-#define maxNum_eachLine 1024 //
-int numOfCPUs;               // number of CPUs we need to create
-char *workload;              // task set name, which is .txt file
-int boostTime;               // time for boost up all tasks in MLFQ
-int reading_done = 0;        // status of reading_thread
-int numOfRunningCPU = 0;     // number of running CPUs
-int quantumLength = 50;      // the time slice in MLFQ each layer
-int allotmentTime = 200;     // task will reduce priority if its time is over allotmentTime
+#define NANOS_PER_USEC 1000     // microsleep
+#define USEC_PER_SEC 1000000    // microsleep
+#define maxNum_eachLine 1024    //
+atomic_int numOfCPUs;           // number of CPUs we need to create
+char *workload;                 // task set name, which is .txt file
+int boostTime;                  // time for boost up all tasks in MLFQ
+int reading_done = 0;           // status of reading_thread
+atomic_int numOfRunningCPU = 0; // number of running CPUs
+int quantumLength = 50;         // the time slice in MLFQ each layer
+int allotmentTime = 200;        // task will reduce priority if its time is over allotmentTime
 pthread_mutex_t mutex_reading = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_CPU_wait = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_CPU_dequeue = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_CPU_enqueue = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_CPU_num = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond_CPU_wakeup = PTHREAD_COND_INITIALIZER;
 // define the node object
 struct taskObj
@@ -91,15 +93,6 @@ int main(int argc, char *argv[])
         exit(1);
     }
     pthread_join(P_reading, NULL);
-    /*//@Test
-    // check all nodes by dequeue
-    while (!TAILQ_EMPTY(&ready_queue))
-    {
-        struct node *first = TAILQ_FIRST(&ready_queue);
-        printf("node: (%s %d %d %d)\n", first->task.task_name, first->task.task_type, first->task.task_length, first->task.odds_of_IO);
-        TAILQ_REMOVE(&ready_queue, first, next);
-        free(first);
-    }*/
     // create CPU threads
     pthread_t P_CPUs[numOfCPUs];
     int i;
@@ -115,6 +108,16 @@ int main(int argc, char *argv[])
     {
         pthread_join(P_CPUs[i], NULL);
     }
+    /*
+    //@Test
+    // check all nodes by dequeue
+    while (!TAILQ_EMPTY(&done_queue))
+    {
+        struct node *first = TAILQ_FIRST(&done_queue);
+        printf("done task: (%s %d %d %d)\n", first->task.task_name, first->task.task_type, first->task.task_length, first->task.odds_of_IO);
+        TAILQ_REMOVE(&done_queue, first, next);
+        free(first);
+    }*/
     return EXIT_SUCCESS;
 }
 //------------------------------------------------------
@@ -161,10 +164,10 @@ void *reading_thread()
             newNode->task.hasCostTime = 0;                         // initialize hasCostTime as 0
             newNode->task.restRunTime = newNode->task.task_length; // initialize restrunTime as task_length
             newNode->task.priority = 3;                            // initialize highest priority as 3
-            //@Test
+            /*//@Test
             printf("%dth task: (%s %d %d %d)(hasCostTime: %d, restRunTime: %d, priority: %d)\n",
                    counter, newNode->task.task_name, newNode->task.task_type, newNode->task.task_length, newNode->task.odds_of_IO,
-                   newNode->task.hasCostTime, newNode->task.restRunTime, newNode->task.priority);
+                   newNode->task.hasCostTime, newNode->task.restRunTime, newNode->task.priority);*/
             // enqueue to ready_queue
             TAILQ_INSERT_TAIL(&ready_queue, newNode, next);
             counter++;
@@ -200,51 +203,70 @@ void *CPU_thread()
         pthread_cond_wait(&cond_CPU_wakeup, &mutex_CPU_wait);
     }
     //@Test
-    printf("thread is free\n");
+    // printf("CPU is working...\n");
     pthread_mutex_unlock(&mutex_CPU_wait);
 
     // ckeck if ready_queue is empty
-    while (!TAILQ_EMPTY(&ready_queue))
+    while (1)
     {
         // if numOfRunningCPU(0,1,2...) is less than numOfCPUs(2/4/8...)
         // which means we need to fetch new task from ready_queue
         // because each CPU only can process one task each time
+        pthread_mutex_lock(&mutex_CPU_num);
         if (numOfRunningCPU < numOfCPUs)
         {
+            assert(numOfRunningCPU < numOfCPUs);
+            //@Test
+            // printf("current numOfRunningCPU: %d\n", numOfRunningCPU);
+            // update the numOfRunningCPU
+            numOfRunningCPU += 1;
+            pthread_mutex_unlock(&mutex_CPU_num);
+
+            pthread_mutex_lock(&mutex_CPU_dequeue);
             // dequeue ready_queue top node, which is the task needs to run
             struct node *first = TAILQ_FIRST(&ready_queue);
-            pthread_mutex_lock(&mutex_CPU_dequeue);
             TAILQ_REMOVE(&ready_queue, first, next);
             pthread_mutex_unlock(&mutex_CPU_dequeue);
             // enqueue running_queue_highPriority first, because it fetched from ready_queue
             pthread_mutex_lock(&mutex_CPU_enqueue);
             TAILQ_INSERT_TAIL(&running_queue_highPriority, first, next);
+            /*//@Test
+            printf("running_queue_highPriority node: (%s %d %d %d)(hasCostTime: %d, restRunTime: %d, priority: %d)\n",
+                   first->task.task_name, first->task.task_type, first->task.task_length, first->task.odds_of_IO,
+                   first->task.hasCostTime, first->task.restRunTime, first->task.priority);*/
             pthread_mutex_unlock(&mutex_CPU_enqueue);
-            // update the numOfRunningCPU
-            numOfRunningCPU += 1;
+            pthread_mutex_lock(&mutex_CPU_dequeue);
+            // (dequeue operation)
+            TAILQ_REMOVE(&running_queue_highPriority, first, next);
+            pthread_mutex_unlock(&mutex_CPU_dequeue);
             // process this task
             scheduler(first);
-            //@Test
-            printf("enqueue running_queue_highPriority node: (%s %d %d %d)\n",
-                   first->task.task_name, first->task.task_type,
-                   first->task.task_length, first->task.odds_of_IO);
         }
         // now all CPUs are working
         // we dont need to fetch new task from ready_queue
         else
         {
+            assert(numOfRunningCPU >= numOfCPUs);
+            //@Test
+            // printf("current numOfRunningCPU: %d\n", numOfRunningCPU);
+            pthread_mutex_unlock(&mutex_CPU_num);
+
+            pthread_mutex_lock(&mutex_CPU_dequeue);
             if (!TAILQ_EMPTY(&running_queue_highPriority))
             {
                 // dequeue running_queue_highPriority top node
                 // which is the task needs to run
                 struct node *first = TAILQ_FIRST(&running_queue_highPriority);
-                assert(first->task.priority == 3);
                 // (dequeue operation)
-                pthread_mutex_lock(&mutex_CPU_dequeue);
+                /*//@Test
+                printf("running_queue_highPriority node: (%s %d %d %d)(hasCostTime: %d, restRunTime: %d, priority: %d)\n",
+                       first->task.task_name, first->task.task_type, first->task.task_length, first->task.odds_of_IO,
+                       first->task.hasCostTime, first->task.restRunTime, first->task.priority);*/
+                assert(first->task.priority == 3);
                 TAILQ_REMOVE(&running_queue_highPriority, first, next);
-                pthread_mutex_unlock(&mutex_CPU_dequeue);
                 // process this task
                 scheduler(first);
+                pthread_mutex_unlock(&mutex_CPU_dequeue);
             }
             // when running_queue_highPriority is empty, and task is still not finished
             // process running_queue_mediumPriority
@@ -257,7 +279,6 @@ void *CPU_thread()
                     struct node *first = TAILQ_FIRST(&running_queue_mediumPriority);
                     assert(first->task.priority == 2);
                     // (dequeue operation)
-                    pthread_mutex_lock(&mutex_CPU_dequeue);
                     TAILQ_REMOVE(&running_queue_mediumPriority, first, next);
                     pthread_mutex_unlock(&mutex_CPU_dequeue);
                     // process this task
@@ -274,15 +295,10 @@ void *CPU_thread()
                         struct node *first = TAILQ_FIRST(&running_queue_lowPriority);
                         assert(first->task.priority == 1);
                         // (dequeue operation)
-                        pthread_mutex_lock(&mutex_CPU_dequeue);
                         TAILQ_REMOVE(&running_queue_lowPriority, first, next);
                         pthread_mutex_unlock(&mutex_CPU_dequeue);
                         // process this task
                         scheduler(first);
-                    }
-                    else
-                    {
-                        printf("uwu! looks this CPU has finished one task, it can process another one!\n");
                     }
                 }
             }
@@ -299,15 +315,18 @@ void *CPU_thread()
 //------------------------------------------------------
 void scheduler(struct node *thisTask)
 {
+    // check if this task will request I/O
+    pthread_mutex_lock(&mutex_CPU_num);
     int randomNum_ifIO = 0;      // random number to check if this task request I/O
     int preemptive_IOLength = 0; // random number to decide the I/O runtime
 
-    // check if this task will request I/O
     randomNum_ifIO = rand() % 101;
     // task willnot do I/O
     if (randomNum_ifIO > thisTask->task.odds_of_IO)
     {
         assert(randomNum_ifIO > thisTask->task.odds_of_IO);
+        printf("-->(%s) has no preemptive I/O, can run\n", thisTask->task.task_name);
+        pthread_mutex_unlock(&mutex_CPU_num);
         // run its time slice
         runTask(thisTask);
     }
@@ -315,8 +334,13 @@ void scheduler(struct node *thisTask)
     else
     {
         assert(randomNum_ifIO <= thisTask->task.odds_of_IO);
+        printf("-->(%s) has preemptive I/O, can't run\n", thisTask->task.task_name);
+        pthread_mutex_unlock(&mutex_CPU_num);
+
+        pthread_mutex_lock(&mutex_CPU_enqueue);
         if (thisTask->task.priority == 3)
         {
+            assert(thisTask->task.priority == 3);
             // dequeue original task from running_queue_highPriority
             // (we have do this dequeue operation in CPU_thread method)
             // generate preemptive I/O runtime
@@ -325,12 +349,12 @@ void scheduler(struct node *thisTask)
             microsleep(preemptive_IOLength);
             // enqueue original task back to scheduler
             // ennqueue original task to running_queue_highPriority
-            pthread_mutex_lock(&mutex_CPU_enqueue);
             TAILQ_INSERT_TAIL(&running_queue_highPriority, thisTask, next);
             pthread_mutex_unlock(&mutex_CPU_enqueue);
         }
         else if (thisTask->task.priority == 2)
         {
+            assert(thisTask->task.priority == 2);
             // dequeue original task from running_queue_mediumPriority
             // (we have do this dequeue operation in CPU_thread method)
             // generate preemptive I/O runtime
@@ -339,12 +363,12 @@ void scheduler(struct node *thisTask)
             microsleep(preemptive_IOLength);
             // enqueue original task back to scheduler
             // ennqueue original task to running_queue_mediumPriority
-            pthread_mutex_lock(&mutex_CPU_enqueue);
             TAILQ_INSERT_TAIL(&running_queue_mediumPriority, thisTask, next);
             pthread_mutex_unlock(&mutex_CPU_enqueue);
         }
         else if (thisTask->task.priority == 1)
         {
+            assert(thisTask->task.priority == 1);
             // dequeue original task from running_queue_lowPriority
             // (we have do this dequeue operation in CPU_thread method)
             // generate preemptive I/O runtime
@@ -353,7 +377,6 @@ void scheduler(struct node *thisTask)
             microsleep(preemptive_IOLength);
             // enqueue original task back to scheduler
             // ennqueue original task to running_queue_lowPriority
-            pthread_mutex_lock(&mutex_CPU_enqueue);
             TAILQ_INSERT_TAIL(&running_queue_lowPriority, thisTask, next);
             pthread_mutex_unlock(&mutex_CPU_enqueue);
         }
@@ -371,30 +394,36 @@ void runTask(struct node *thisTask)
     // need to reduce priority
     // it could be hasCostTime >= allotmentTime && thisTask->task.priority == 3
     // it could be hasCostTime >= allotmentTime && thisTask->task.priority == 2
+    pthread_mutex_lock(&mutex_CPU_num);
     if (thisTask->task.hasCostTime >= allotmentTime && thisTask->task.priority > 1)
     {
         assert(thisTask->task.hasCostTime >= allotmentTime);
         assert(thisTask->task.priority > 1);
+        printf("  |-->(%s) is over allotmentTime, reduce priority (hasCostTime: %d, restRunTime: %d)\n",
+               thisTask->task.task_name, thisTask->task.hasCostTime, thisTask->task.restRunTime);
         // reduce priority
         thisTask->task.priority -= 1;
         // update the hasCostTime as 0, because it will run in a new queue
         thisTask->task.hasCostTime = 0;
+        pthread_mutex_unlock(&mutex_CPU_num);
+
+        pthread_mutex_lock(&mutex_CPU_enqueue);
         // restRunTime will not update
         if (thisTask->task.priority == 2)
         {
+            assert(thisTask->task.priority == 2);
             // dequeue this task from running_queue_highPriority
             // (we have do this dequeue operation in CPU_thread method)
             // ennqueue this task(still has rest part needs to do) to running_queue_mediumPriority
-            pthread_mutex_lock(&mutex_CPU_enqueue);
             TAILQ_INSERT_TAIL(&running_queue_mediumPriority, thisTask, next);
             pthread_mutex_unlock(&mutex_CPU_enqueue);
         }
         else if (thisTask->task.priority == 1)
         {
+            assert(thisTask->task.priority == 1);
             // dequeue this task from running_queue_mediumPriority
             // (we have do this dequeue operation in CPU_thread method)
             // ennqueue this task(still has rest part needs to do) to running_queue_lowPriority
-            pthread_mutex_lock(&mutex_CPU_enqueue);
             TAILQ_INSERT_TAIL(&running_queue_lowPriority, thisTask, next);
             pthread_mutex_unlock(&mutex_CPU_enqueue);
         }
@@ -406,10 +435,21 @@ void runTask(struct node *thisTask)
     // it could be hasCostTime < allotmentTime && thisTask->task.priority == 1
     else
     {
+        printf("   |-->(%s) is not over allotmentTime (hasCostTime: %d, restRunTime: %d)\n",
+               thisTask->task.task_name, thisTask->task.hasCostTime, thisTask->task.restRunTime);
+        pthread_mutex_unlock(&mutex_CPU_num);
+
+        pthread_mutex_lock(&mutex_CPU_num);
         if (thisTask->task.priority == 3)
         {
+            assert(thisTask->task.priority == 3);
+            printf("      |-->(%s) is priority 3\n", thisTask->task.task_name);
             if (thisTask->task.restRunTime <= quantumLength)
             {
+                assert(thisTask->task.restRunTime <= quantumLength);
+                pthread_mutex_unlock(&mutex_CPU_num);
+
+                pthread_mutex_lock(&mutex_CPU_enqueue);
                 // dequeue this task from running_queue_highPriority
                 // (we have do this dequeue operation in CPU_thread method)
                 // excute this task by its runtime
@@ -421,14 +461,19 @@ void runTask(struct node *thisTask)
                 thisTask->task.restRunTime -= thisTask->task.restRunTime;
                 assert(thisTask->task.restRunTime == 0);
                 // ennqueue task to done_queue
-                pthread_mutex_lock(&mutex_CPU_enqueue);
                 TAILQ_INSERT_TAIL(&done_queue, thisTask, next);
-                pthread_mutex_unlock(&mutex_CPU_enqueue);
                 // this task has done
                 numOfRunningCPU -= 1;
+                printf("         |-->(%s) is done (hasCostTime: %d, restRunTime: %d)\n",
+                       thisTask->task.task_name, thisTask->task.hasCostTime, thisTask->task.restRunTime);
+                pthread_mutex_unlock(&mutex_CPU_enqueue);
             }
             else
             {
+                assert(thisTask->task.restRunTime > quantumLength);
+                pthread_mutex_unlock(&mutex_CPU_num);
+
+                pthread_mutex_lock(&mutex_CPU_enqueue);
                 // dequeue this task from running_queue_highPriority
                 // (we have do this dequeue operation in CPU_thread method)
                 // excute this task by its runtime which is quantumLength
@@ -438,15 +483,20 @@ void runTask(struct node *thisTask)
                 // update the restRunTime
                 thisTask->task.restRunTime -= quantumLength;
                 // ennqueue this task(still has rest part needs to do) to running_queue_highPriority
-                pthread_mutex_lock(&mutex_CPU_enqueue);
                 TAILQ_INSERT_TAIL(&running_queue_highPriority, thisTask, next);
                 pthread_mutex_unlock(&mutex_CPU_enqueue);
             }
         }
         else if (thisTask->task.priority == 2)
         {
+            assert(thisTask->task.priority == 2);
+            printf("      |-->(%s) is priority 2\n", thisTask->task.task_name);
             if (thisTask->task.restRunTime <= quantumLength)
             {
+                assert(thisTask->task.restRunTime <= quantumLength);
+                pthread_mutex_unlock(&mutex_CPU_num);
+
+                pthread_mutex_lock(&mutex_CPU_enqueue);
                 // dequeue this task from running_queue_mediumPriority
                 // (we have do this dequeue operation in CPU_thread method)
                 // excute this task by its runtime
@@ -457,14 +507,17 @@ void runTask(struct node *thisTask)
                 thisTask->task.restRunTime -= thisTask->task.restRunTime;
                 assert(thisTask->task.restRunTime == 0);
                 // ennqueue task to done_queue
-                pthread_mutex_lock(&mutex_CPU_enqueue);
                 TAILQ_INSERT_TAIL(&done_queue, thisTask, next);
-                pthread_mutex_unlock(&mutex_CPU_enqueue);
                 // this task has done
                 numOfRunningCPU -= 1;
+                pthread_mutex_unlock(&mutex_CPU_enqueue);
             }
             else
             {
+                assert(thisTask->task.restRunTime > quantumLength);
+                pthread_mutex_unlock(&mutex_CPU_num);
+
+                pthread_mutex_lock(&mutex_CPU_enqueue);
                 // dequeue this task from running_queue_mediumPriority
                 // (we have do this dequeue operation in CPU_thread method)
                 // excute this task by its runtime which is quantumLength
@@ -474,15 +527,20 @@ void runTask(struct node *thisTask)
                 // update the restRunTime
                 thisTask->task.restRunTime -= quantumLength;
                 // ennqueue this task(still has rest part needs to do) to running_queue_mediumPriority
-                pthread_mutex_lock(&mutex_CPU_enqueue);
                 TAILQ_INSERT_TAIL(&running_queue_mediumPriority, thisTask, next);
                 pthread_mutex_unlock(&mutex_CPU_enqueue);
             }
         }
         else if (thisTask->task.priority == 1)
         {
+            assert(thisTask->task.priority == 1);
+            printf("      |-->(%s) is priority 1\n", thisTask->task.task_name);
             if (thisTask->task.restRunTime <= quantumLength)
             {
+                assert(thisTask->task.restRunTime <= quantumLength);
+                pthread_mutex_unlock(&mutex_CPU_num);
+
+                pthread_mutex_lock(&mutex_CPU_enqueue);
                 // dequeue this task from running_queue_lowPriority
                 // (we have do this dequeue operation in CPU_thread method)
                 // excute this task by its runtime
@@ -493,14 +551,17 @@ void runTask(struct node *thisTask)
                 thisTask->task.restRunTime -= thisTask->task.restRunTime;
                 assert(thisTask->task.restRunTime == 0);
                 // ennqueue task to done_queue
-                pthread_mutex_lock(&mutex_CPU_enqueue);
                 TAILQ_INSERT_TAIL(&done_queue, thisTask, next);
-                pthread_mutex_unlock(&mutex_CPU_enqueue);
                 // this task has done
                 numOfRunningCPU -= 1;
+                pthread_mutex_unlock(&mutex_CPU_enqueue);
             }
             else
             {
+                assert(thisTask->task.restRunTime > quantumLength);
+                pthread_mutex_unlock(&mutex_CPU_num);
+
+                pthread_mutex_lock(&mutex_CPU_enqueue);
                 // dequeue this task from running_queue_lowPriority
                 // (we have do this dequeue operation in CPU_thread method)
                 // excute this task by its runtime which is quantumLength
@@ -510,7 +571,6 @@ void runTask(struct node *thisTask)
                 // update the restRunTime
                 thisTask->task.restRunTime -= quantumLength;
                 // ennqueue this task(still has rest part needs to do) to running_queue_lowPriority
-                pthread_mutex_lock(&mutex_CPU_enqueue);
                 TAILQ_INSERT_TAIL(&running_queue_lowPriority, thisTask, next);
                 pthread_mutex_unlock(&mutex_CPU_enqueue);
             }
