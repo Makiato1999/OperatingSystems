@@ -230,9 +230,9 @@ void *CPU_thread()
                 TAILQ_INSERT_TAIL(&running_queue_highPriority, first, next);
                 // (dequeue operation)
                 TAILQ_REMOVE(&running_queue_highPriority, first, next);
+                pthread_mutex_unlock(&mutex_CPU_queue);
                 // process this task
                 scheduler(first);
-                pthread_mutex_unlock(&mutex_CPU_queue);
             }
             else
             {
@@ -261,6 +261,7 @@ void *CPU_thread()
                 assert(first->task.priority == 3);
                 // (dequeue operation)
                 TAILQ_REMOVE(&running_queue_highPriority, first, next);
+                pthread_mutex_unlock(&mutex_CPU_queue);
                 // process this task
                 scheduler(first);
             }
@@ -276,6 +277,7 @@ void *CPU_thread()
                     assert(first->task.priority == 2);
                     // (dequeue operation)
                     TAILQ_REMOVE(&running_queue_mediumPriority, first, next);
+                    pthread_mutex_unlock(&mutex_CPU_queue);
                     // process this task
                     scheduler(first);
                 }
@@ -291,12 +293,12 @@ void *CPU_thread()
                         assert(first->task.priority == 1);
                         // (dequeue operation)
                         TAILQ_REMOVE(&running_queue_lowPriority, first, next);
+                        pthread_mutex_unlock(&mutex_CPU_queue);
                         // process this task
                         scheduler(first);
                     }
                 }
             }
-            pthread_mutex_unlock(&mutex_CPU_queue);
         }
     }
     pthread_exit((void *)pthread_self());
@@ -320,16 +322,17 @@ void scheduler(struct node *thisTask)
     if (randomNum_ifIO > thisTask->task.odds_of_IO)
     {
         assert(randomNum_ifIO > thisTask->task.odds_of_IO);
-        printf("-->(%s) has no preemptive I/O, can run\n", thisTask->task.task_name);
+        printf("-->(%s) has no preemptive I/O, keep running\n", thisTask->task.task_name);
+        pthread_mutex_unlock(&mutex_CPU_num);
+
         // run its time slice
         runTask(thisTask);
-        pthread_mutex_unlock(&mutex_CPU_num);
     }
     // task will do I/O
     else
     {
         assert(randomNum_ifIO <= thisTask->task.odds_of_IO);
-        printf("-->(%s) has preemptive I/O, can't run\n", thisTask->task.task_name);
+        printf("-->(%s) has preemptive I/O, rescheduler\n", thisTask->task.task_name);
         pthread_mutex_unlock(&mutex_CPU_num);
 
         pthread_mutex_lock(&mutex_CPU_queue);
@@ -501,6 +504,8 @@ void runTask(struct node *thisTask)
                 TAILQ_INSERT_TAIL(&done_queue, thisTask, next);
                 // this task has done
                 numOfRunningCPU -= 1;
+                printf("         |-->(%s) is done (hasCostTime: %d, restRunTime: %d)\n",
+                       thisTask->task.task_name, thisTask->task.hasCostTime, thisTask->task.restRunTime);
             }
             else
             {
@@ -543,7 +548,8 @@ void runTask(struct node *thisTask)
                 TAILQ_INSERT_TAIL(&done_queue, thisTask, next);
                 // this task has done
                 numOfRunningCPU -= 1;
-                pthread_mutex_unlock(&mutex_CPU_queue);
+                printf("         |-->(%s) is done (hasCostTime: %d, restRunTime: %d)\n",
+                       thisTask->task.task_name, thisTask->task.hasCostTime, thisTask->task.restRunTime);
             }
             else
             {
@@ -559,8 +565,8 @@ void runTask(struct node *thisTask)
                 thisTask->task.restRunTime -= quantumLength;
                 // ennqueue this task(still has rest part needs to do) to running_queue_lowPriority
                 TAILQ_INSERT_TAIL(&running_queue_lowPriority, thisTask, next);
-                pthread_mutex_unlock(&mutex_CPU_queue);
             }
+            pthread_mutex_unlock(&mutex_CPU_queue);
         }
     }
 }
