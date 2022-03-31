@@ -1,5 +1,5 @@
 short_task_0 0 308 22
-io_task_0 3 19335 72
-io_task_1 3 33557 91
+io_task_0 3 193 72
+io_task_1 3 335 91
 DELAY 801
-io_task_2 3 46376 78
+io_task_2 3 463 78
