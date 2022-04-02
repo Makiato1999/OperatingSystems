@@ -18,25 +18,22 @@
 #include <assert.h>
 #include <stdatomic.h>
 // define global variable
-#define NANOS_PER_USEC 1000  // microsleep
-#define USEC_PER_SEC 1000000 // microsleep
-#define maxNum_eachLine 1024 //
-int numOfAllTasks;           // number of all tasks
-int numOfDoneTasks;          // nnumber of done tasks
-int numOfCPUs;               // number of CPUs we need to create
-char *workload;              // task set name, which is .txt file
-int boostTime;               // time for boost up all tasks in MLFQ
-int reading_done = 0;        // status of reading_thread
-int numOfRunningCPU = 0;     // number of running CPUs
-int quantumLength = 50;      // the time slice in MLFQ each layer
-int allotmentTime = 200;     // task will reduce priority if its time is over allotmentTime
+#define NANOS_PER_USEC 1000   // microsleep
+#define USEC_PER_SEC 1000000  // microsleep
+#define maxNum_eachLine 1024  //
+int numOfAllTasks;            // number of all tasks
+int numOfDoneTasks;           // nnumber of done tasks
+int numOfCPUs;                // number of CPUs we need to create
+char *workload;               // task set name, which is .txt file
+int boostTime;                // time for boost up all tasks in MLFQ to high priority
+int allTasksHaveCostTime = 0; // all tasks have cost time
+int reading_done = 0;         // status of reading_thread
+int quantumLength = 50;       // the time slice in MLFQ each layer
+int allotmentTime = 200;      // task will reduce priority if its time is over allotmentTime
 pthread_mutex_t mutex_reading = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_CPU_wait = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_CPU_scheduler = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_CPU_prepare = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_CPU_runTask = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond_CPU_wakeup = PTHREAD_COND_INITIALIZER;
-pthread_cond_t cond_CPU_workSignal = PTHREAD_COND_INITIALIZER;
 // define the node object
 struct taskObj
 {
@@ -166,20 +163,12 @@ void *reading_thread()
             newNode->task.hasCostTime = 0;                         // initialize hasCostTime as 0
             newNode->task.restRunTime = newNode->task.task_length; // initialize restrunTime as task_length
             newNode->task.priority = 3;                            // initialize highest priority as 3
-            /*//@Test
-            printf("%dth task: (%s %d %d %d)(hasCostTime: %d, restRunTime: %d, priority: %d)\n",
-                   counter, newNode->task.task_name, newNode->task.task_type, newNode->task.task_length, newNode->task.odds_of_IO,
-                   newNode->task.hasCostTime, newNode->task.restRunTime, newNode->task.priority);*/
             // enqueue to ready_queue
             TAILQ_INSERT_TAIL(&ready_queue, newNode, next);
             numOfAllTasks += 1;
-            // @Test
-            // printf("numOfAllTasks: %d\n", numOfAllTasks);
         }
         else
         {
-            //@Test
-            // printf("DELAY: (%s %d)\n", newNode->task.task_name, newNode->task.task_type);
             microsleep(newNode->task.task_type);
         }
     }
@@ -212,9 +201,6 @@ void *CPU_thread()
 
     while (1)
     {
-        // if numOfRunningCPU(0,1,2...) is less than numOfCPUs(2/4/8...)
-        // which means we need to fetch new task from ready_queue
-        // because each CPU only can process one task each time
         pthread_mutex_lock(&mutex_CPU_prepare);
         if (!TAILQ_EMPTY(&ready_queue))
         {
@@ -308,7 +294,6 @@ void scheduler(struct node *thisTask)
         assert(randomNum_ifIO > thisTask->task.odds_of_IO);
         printf("-->(%s) has no preemptive I/O, keep running\n", thisTask->task.task_name);
         pthread_mutex_unlock(&mutex_CPU_prepare);
-
         // run its time slice
         runTask(thisTask);
     }
@@ -318,18 +303,17 @@ void scheduler(struct node *thisTask)
         assert(randomNum_ifIO <= thisTask->task.odds_of_IO);
         printf("-->(%s) has preemptive I/O (%d <= %d), reschedule\n",
                thisTask->task.task_name, randomNum_ifIO, thisTask->task.odds_of_IO);
-
+        // generate preemptive I/O runtime
+        preemptive_IOLength = rand() % (quantumLength + 1);
+        // dequeue original task from running_queue_high/medium/lowPriority
+        // (we have do this dequeue operation in CPU_thread method)
+        pthread_mutex_unlock(&mutex_CPU_prepare);
+        // excute this task(preemptive I/O) instantly
+        microsleep(preemptive_IOLength);
+        pthread_mutex_lock(&mutex_CPU_prepare);
         if (thisTask->task.priority == 3)
         {
             assert(thisTask->task.priority == 3);
-            // dequeue original task from running_queue_highPriority
-            // (we have do this dequeue operation in CPU_thread method)
-            // generate preemptive I/O runtime
-            preemptive_IOLength = rand() % (quantumLength + 1);
-            pthread_mutex_unlock(&mutex_CPU_prepare);
-            // excute this task(preemptive I/O) instantly
-            microsleep(preemptive_IOLength);
-            pthread_mutex_lock(&mutex_CPU_prepare);
             // enqueue original task back to scheduler
             // ennqueue original task to running_queue_highPriority
             TAILQ_INSERT_TAIL(&running_queue_highPriority, thisTask, next);
@@ -337,14 +321,6 @@ void scheduler(struct node *thisTask)
         else if (thisTask->task.priority == 2)
         {
             assert(thisTask->task.priority == 2);
-            // dequeue original task from running_queue_mediumPriority
-            // (we have do this dequeue operation in CPU_thread method)
-            // generate preemptive I/O runtime
-            preemptive_IOLength = rand() % (quantumLength + 1);
-            pthread_mutex_unlock(&mutex_CPU_prepare);
-            // excute this task(preemptive I/O) instantly
-            microsleep(preemptive_IOLength);
-            pthread_mutex_lock(&mutex_CPU_prepare);
             // enqueue original task back to scheduler
             // ennqueue original task to running_queue_mediumPriority
             TAILQ_INSERT_TAIL(&running_queue_mediumPriority, thisTask, next);
@@ -352,14 +328,6 @@ void scheduler(struct node *thisTask)
         else if (thisTask->task.priority == 1)
         {
             assert(thisTask->task.priority == 1);
-            // dequeue original task from running_queue_lowPriority
-            // (we have do this dequeue operation in CPU_thread method)
-            // generate preemptive I/O runtime
-            preemptive_IOLength = rand() % (quantumLength + 1);
-            pthread_mutex_unlock(&mutex_CPU_prepare);
-            // excute this task(preemptive I/O) instantly
-            microsleep(preemptive_IOLength);
-            pthread_mutex_lock(&mutex_CPU_prepare);
             // enqueue original task back to scheduler
             // ennqueue original task to running_queue_lowPriority
             TAILQ_INSERT_TAIL(&running_queue_lowPriority, thisTask, next);
@@ -390,7 +358,6 @@ void runTask(struct node *thisTask)
         thisTask->task.priority -= 1;
         // update the hasCostTime as 0, because it will run in a new queue
         thisTask->task.hasCostTime = 0;
-
         // restRunTime will not update
         if (thisTask->task.priority == 2)
         {
@@ -419,12 +386,11 @@ void runTask(struct node *thisTask)
     {
         printf("   |-->(%s) is not over allotmentTime (hasCostTime: %d, restRunTime: %d)\n",
                thisTask->task.task_name, thisTask->task.hasCostTime, thisTask->task.restRunTime);
-
         if (thisTask->task.priority == 3)
         {
             assert(thisTask->task.priority == 3);
             printf("      |-->(%s) is priority 3\n", thisTask->task.task_name);
-
+            
             if (thisTask->task.restRunTime <= quantumLength)
             {
                 assert(thisTask->task.restRunTime <= quantumLength);
