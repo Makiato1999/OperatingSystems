@@ -8,7 +8,6 @@ while (1)
     {
         node = dequeue(readyQ);
         enqueue(highQ);
-        pthread_mutex_unlock(&mutex_CPU_prepare);
         scheduler(node);
     }
     else
@@ -21,22 +20,20 @@ while (1)
         if (!highQ.isEmpty)
         {
             node = dequeue(highQ);
-            pthread_mutex_unlock(&mutex_CPU_prepare);
             scheduler(node);
         }
         else if (!mediumQ.isEmpty)
         {
             node = dequeue(mediumQ);
-            pthread_mutex_unlock(&mutex_CPU_prepare);
             scheduler(node);
         }
         else if (!lowQ.isEmpty)
         {
             node = dequeue(lowQ);
-            pthread_mutex_unlock(&mutex_CPU_prepare);
             scheduler(node);
         }
     }
+    pthread_mutex_unlock(&mutex_CPU_prepare);
 }
 void scheduler(node)
 {
