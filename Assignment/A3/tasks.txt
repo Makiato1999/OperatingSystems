@@ -3,3 +3,7 @@ io_task_0 3 193 72
 io_task_1 3 335 91
 DELAY 801
 io_task_2 3 463 78
+med_task_0 1 317 28
+short_task_1 0 482 47
+io_task_3 3 320 88
+long_task_0 2 483 47
