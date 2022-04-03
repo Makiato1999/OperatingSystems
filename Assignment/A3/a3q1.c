@@ -18,25 +18,42 @@
 #include <assert.h>
 #include <stdatomic.h>
 // define global variable
-#define NANOS_PER_USEC 1000   // microsleep
-#define USEC_PER_SEC 1000000  // microsleep
-#define maxNum_eachLine 1024  //
-int numOfAllTasks;            // number of all tasks
-atomic_int numOfDoneTasks;    // nnumber of done tasks
-int numOfCPUs;                // number of CPUs we need to create
-char *workload;               // task set name, which is .txt file
-int boostTime;                // time for boost up all tasks in MLFQ to high priority
-int allTasksHaveCostTime = 0; // all tasks have cost time
-int reading_done = 0;         // status of reading_thread
-int quantumLength = 50;       // the time slice in MLFQ each layer
-int allotmentTime = 200;      // task will reduce priority if its time is over allotmentTime
-int boostIndex = 0;           // index of each boost
-int type0_turnaroundTime = 0; // type 0 turnaround time
-int type1_turnaroundTime = 0; // type 1 turnaround time
-int type2_turnaroundTime = 0; // type 2 turnaround time
-int type3_turnaroundTime = 0; // type 3 turnaround time
-struct timespec start, end;
-
+#define NANOS_PER_USEC 1000           // microsleep
+#define USEC_PER_SEC 1000000          // microsleep
+#define maxNum_eachLine 1024          //
+int numOfAllTasks;                    // number of all tasks
+atomic_int numOfDoneTasks;            // nnumber of done tasks
+int numOfCPUs;                        // number of CPUs we need to create
+char *workload;                       // task set name, which is .txt file
+int boostTime;                        // time for boost up all tasks in MLFQ to high priority
+int allTasksHaveCostTime = 0;         // all tasks have cost time
+int reading_done = 0;                 // status of reading_thread
+int quantumLength = 50;               // the time slice in MLFQ each layer
+int allotmentTime = 200;              // task will reduce priority if its time is over allotmentTime
+int boostIndex = 0;                   // index of each boost
+int type0_run_counter = 0;            // record type0 run couters
+int type1_run_counter = 0;            // record type1 run couters
+int type2_run_counter = 0;            // record type2 run couters
+int type3_run_counter = 0;            // record type3 run couters
+int type0_turnaroundTime = 0;         // type0_turnaroundTime
+int type1_turnaroundTime = 0;         // type1_turnaroundTime
+int type2_turnaroundTime = 0;         // type2_turnaroundTime
+int type3_turnaroundTime = 0;         // type3_turnaroundTime
+int type0_average_turnaroundTime = 0; // type0_average_turnaroundTime
+int type1_average_turnaroundTime = 0; // type1_average_turnaroundTime
+int type2_average_turnaroundTime = 0; // type2_average_turnaroundTime
+int type3_average_turnaroundTime = 0; // type3_average_turnaroundTime
+int type0_responseTime = 0;           // type0_responseTime
+int type1_responseTime = 0;           // type1_responseTime
+int type2_responseTime = 0;           // type2_responseTime
+int type3_responseTime = 0;           // type3_responseTime
+int type0_average_responseTime = 0;   // type0_average_responseTime
+int type1_average_responseTime = 0;   // type1_average_responseTime
+int type2_average_responseTime = 0;   // type2_average_responseTime
+int type3_average_responseTime = 0;   // type3_average_responseTime
+struct timespec start;                // arrival time
+struct timespec end_turnaroundTime;   // end_turnaroundTime
+struct timespec end_responseTime;     // end_responseTime
 pthread_mutex_t mutex_reading = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_CPU_wait = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_CPU_prepare = PTHREAD_MUTEX_INITIALIZER;
@@ -76,6 +93,10 @@ void scheduler(struct node *thisTask);
 void runTask(struct node *thisTask);
 static void microsleep(unsigned int usecs);
 struct timespec diff(struct timespec start, struct timespec end);
+void calculate_all_turnaroundTime(struct node *thisTask);
+void calculate_average_turnaroundTime();
+void calculate_all_responseTime(struct node *thisTask);
+void calculate_average_responseTime();
 
 int main(int argc, char *argv[])
 {
@@ -118,16 +139,10 @@ int main(int argc, char *argv[])
     {
         pthread_join(P_CPUs[i], NULL);
     }
-    /*
-    //@Test
-    // check all nodes by dequeue
-    while (!TAILQ_EMPTY(&done_queue))
-    {
-        struct node *first = TAILQ_FIRST(&done_queue);
-        printf("done task: (%s %d %d %d)\n", first->task.task_name, first->task.task_type, first->task.task_length, first->task.odds_of_IO);
-        TAILQ_REMOVE(&done_queue, first, next);
-        free(first);
-    }*/
+    // calculate time
+    printf("\nUsing mlfq with %d CPUs.\n\n", numOfCPUs);
+    calculate_average_turnaroundTime();
+    calculate_average_responseTime();
     return EXIT_SUCCESS;
 }
 //------------------------------------------------------
@@ -208,7 +223,8 @@ void *CPU_thread()
     //@Test
     printf("CPU is working...\n");
     pthread_mutex_unlock(&mutex_CPU_wait);
-
+    
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start);
     while (1)
     {
         pthread_mutex_lock(&mutex_CPU_prepare);
@@ -254,8 +270,9 @@ void *CPU_thread()
             TAILQ_REMOVE(&ready_queue, first, next);
             // enqueue running_queue_highPriority first, because it fetched from ready_queue
             TAILQ_INSERT_TAIL(&running_queue_highPriority, first, next);
+            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end_responseTime);
+            calculate_all_responseTime(first);
             // process this task
-            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start);
             scheduler(first);
         }
         else
@@ -304,8 +321,8 @@ void *CPU_thread()
             else
             {
                 pthread_mutex_unlock(&mutex_CPU_prepare);
-                //assert(TAILQ_EMPTY(&ready_queue) && TAILQ_EMPTY(&running_queue_highPriority) && TAILQ_EMPTY(&running_queue_mediumPriority) && TAILQ_EMPTY(&running_queue_lowPriority));
-                //printf("numOfDoneTasks: %d, allTasks: %d\n", numOfDoneTasks, numOfAllTasks);
+                // assert(TAILQ_EMPTY(&ready_queue) && TAILQ_EMPTY(&running_queue_highPriority) && TAILQ_EMPTY(&running_queue_mediumPriority) && TAILQ_EMPTY(&running_queue_lowPriority));
+                // printf("numOfDoneTasks: %d, allTasks: %d\n", numOfDoneTasks, numOfAllTasks);
             }
         }
     }
@@ -465,10 +482,9 @@ void runTask(struct node *thisTask)
                 numOfDoneTasks += 1;
                 printf("         (%s)\n", thisTask->task.task_name);
                 printf("         |--> is done (allHasCostTime: %d, taskLength: %d, restRunTime: %d, doneTasks: %d)\n",
-                    thisTask->task.allHasCostTime, thisTask->task.task_length, thisTask->task.restRunTime, numOfDoneTasks);
-                clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end);
-                printf("               |-->turnaround time (usec: %ld, nsec: %ld)\n",
-                       (diff(start, end).tv_nsec)/1000, diff(start, end).tv_nsec);
+                       thisTask->task.allHasCostTime, thisTask->task.task_length, thisTask->task.restRunTime, numOfDoneTasks);
+                clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end_turnaroundTime);
+                calculate_all_turnaroundTime(thisTask);
             }
             else
             {
@@ -518,10 +534,9 @@ void runTask(struct node *thisTask)
                 numOfDoneTasks += 1;
                 printf("         (%s)\n", thisTask->task.task_name);
                 printf("         |--> is done (allHasCostTime: %d, taskLength: %d, restRunTime: %d, doneTasks: %d)\n",
-                    thisTask->task.allHasCostTime, thisTask->task.task_length, thisTask->task.restRunTime, numOfDoneTasks);
-                clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end);
-                printf("               |-->turnaround time (usec: %ld, nsec: %ld)\n",
-                       (diff(start, end).tv_nsec)/1000, diff(start, end).tv_nsec);
+                       thisTask->task.allHasCostTime, thisTask->task.task_length, thisTask->task.restRunTime, numOfDoneTasks);
+                clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end_turnaroundTime);
+                calculate_all_turnaroundTime(thisTask);
             }
             else
             {
@@ -571,10 +586,9 @@ void runTask(struct node *thisTask)
                 numOfDoneTasks += 1;
                 printf("         (%s)\n", thisTask->task.task_name);
                 printf("         |--> is done (allHasCostTime: %d, taskLength: %d, restRunTime: %d, doneTasks: %d)\n",
-                    thisTask->task.allHasCostTime, thisTask->task.task_length, thisTask->task.restRunTime, numOfDoneTasks);
-                clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end);
-                printf("               |-->turnaround time (usec: %ld, nsec: %ld)\n",
-                       (diff(start, end).tv_nsec)/1000, diff(start, end).tv_nsec);
+                       thisTask->task.allHasCostTime, thisTask->task.task_length, thisTask->task.restRunTime, numOfDoneTasks);
+                clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end_turnaroundTime);
+                calculate_all_turnaroundTime(thisTask);
             }
             else
             {
@@ -642,4 +656,98 @@ struct timespec diff(struct timespec start, struct timespec end)
         temp.tv_nsec = end.tv_nsec - start.tv_nsec;
     }
     return temp;
+}
+//------------------------------------------------------
+// myRoutine: calculate_all_turnaroundTime
+//
+// PURPOSE: calculate_all_turnaroundTime
+// INPUT PARAMETERS:
+//     struct node *thisTask
+//------------------------------------------------------
+void calculate_all_turnaroundTime(struct node *thisTask)
+{
+    printf("               |-->turnaround time (usec: %ld, nsec: %ld)\n",
+           (diff(start, end_turnaroundTime).tv_nsec) / 1000, diff(start, end_turnaroundTime).tv_nsec);
+    if (thisTask->task.task_type == 0)
+    {
+        type0_turnaroundTime += (diff(start, end_turnaroundTime).tv_nsec) / 1000;
+        type0_run_counter += 1;
+    }
+    else if (thisTask->task.task_type == 1)
+    {
+        type1_turnaroundTime += (diff(start, end_turnaroundTime).tv_nsec) / 1000;
+        type1_run_counter += 1;
+    }
+    else if (thisTask->task.task_type == 2)
+    {
+        type2_turnaroundTime += (diff(start, end_turnaroundTime).tv_nsec) / 1000;
+        type2_run_counter += 1;
+    }
+    else if (thisTask->task.task_type == 3)
+    {
+        type3_turnaroundTime += (diff(start, end_turnaroundTime).tv_nsec) / 1000;
+        type3_run_counter += 1;
+    }
+}
+//------------------------------------------------------
+// myRoutine: calculate_average_turnaroundTime
+//
+// PURPOSE: calculate_average_turnaroundTime
+// INPUT PARAMETERS:
+//------------------------------------------------------
+void calculate_average_turnaroundTime()
+{
+    type0_average_turnaroundTime = type0_turnaroundTime / type0_run_counter;
+    type1_average_turnaroundTime = type1_turnaroundTime / type1_run_counter;
+    type2_average_turnaroundTime = type2_turnaroundTime / type2_run_counter;
+    type3_average_turnaroundTime = type3_turnaroundTime / type3_run_counter;
+    printf("Average turnaround time per type:\n");
+    printf("- Type 0: %d usec\n", type0_average_turnaroundTime);
+    printf("- Type 1: %d usec\n", type1_average_turnaroundTime);
+    printf("- Type 2: %d usec\n", type2_average_turnaroundTime);
+    printf("- Type 3: %d usec\n", type3_average_turnaroundTime);
+}
+//------------------------------------------------------
+// myRoutine: calculate_all_responseTime
+//
+// PURPOSE: calculate_all_responseTime
+// INPUT PARAMETERS:
+//     struct node *thisTask
+//------------------------------------------------------
+void calculate_all_responseTime(struct node *thisTask)
+{
+    if (thisTask->task.task_type == 0)
+    {
+        type0_responseTime += (diff(start, end_responseTime).tv_nsec) / 1000;
+    }
+    else if (thisTask->task.task_type == 1)
+    {
+        type1_responseTime += (diff(start, end_responseTime).tv_nsec) / 1000;
+    }
+    else if (thisTask->task.task_type == 2)
+    {
+        type2_responseTime += (diff(start, end_responseTime).tv_nsec) / 1000;
+    }
+    else if (thisTask->task.task_type == 3)
+    {
+        type3_responseTime += (diff(start, end_responseTime).tv_nsec) / 1000;
+    }
+}
+//------------------------------------------------------
+// myRoutine: calculate_average_responseTime
+//
+// PURPOSE: calculate_average_responseTime
+// INPUT PARAMETERS:
+//------------------------------------------------------
+void calculate_average_responseTime()
+{
+    type0_average_responseTime = type0_responseTime / type0_run_counter;
+    type1_average_responseTime = type1_responseTime / type1_run_counter;
+    type2_average_responseTime = type2_responseTime / type2_run_counter;
+    type3_average_responseTime = type3_responseTime / type3_run_counter;
+    printf("\nAverage response time per type:\n");
+    printf("- Type 0: %d usec\n", type0_average_responseTime);
+    printf("- Type 1: %d usec\n", type1_average_responseTime);
+    printf("- Type 2: %d usec\n", type2_average_responseTime);
+    printf("- Type 3: %d usec\n", type3_average_responseTime);
 }
