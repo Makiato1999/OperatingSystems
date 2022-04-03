@@ -30,7 +30,13 @@ int allTasksHaveCostTime = 0; // all tasks have cost time
 int reading_done = 0;         // status of reading_thread
 int quantumLength = 50;       // the time slice in MLFQ each layer
 int allotmentTime = 200;      // task will reduce priority if its time is over allotmentTime
-int boostIndex = 0;
+int boostIndex = 0;           // index of each boost
+int type0_turnaroundTime = 0; // type 0 turnaround time
+int type1_turnaroundTime = 0; // type 1 turnaround time
+int type2_turnaroundTime = 0; // type 2 turnaround time
+int type3_turnaroundTime = 0; // type 3 turnaround time
+struct timespec start, end;
+
 pthread_mutex_t mutex_reading = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_CPU_wait = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_CPU_prepare = PTHREAD_MUTEX_INITIALIZER;
@@ -43,6 +49,7 @@ struct taskObj
     int task_length;
     int odds_of_IO;
     int hasCostTime;
+    int allHasCostTime;
     int restRunTime;
     int priority;
     int needRunTime;
@@ -68,6 +75,7 @@ void *CPU_thread();
 void scheduler(struct node *thisTask);
 void runTask(struct node *thisTask);
 static void microsleep(unsigned int usecs);
+struct timespec diff(struct timespec start, struct timespec end);
 
 int main(int argc, char *argv[])
 {
@@ -219,7 +227,7 @@ void *CPU_thread()
                 temp->task.hasCostTime = 0;
                 // enqueue back to running_queue_highPriority
                 TAILQ_INSERT_TAIL(&running_queue_highPriority, temp, next);
-                printf("++++>%dth, (%s) has been boosted up\n", boostIndex, temp->task.task_name);
+                // printf("++++>%dth, (%s) has been boosted up\n", boostIndex, temp->task.task_name);
             }
             while (!TAILQ_EMPTY(&running_queue_lowPriority))
             {
@@ -233,7 +241,7 @@ void *CPU_thread()
                 temp->task.hasCostTime = 0;
                 // enqueue back to running_queue_highPriority
                 TAILQ_INSERT_TAIL(&running_queue_highPriority, temp, next);
-                printf("++++>%dth, (%s) has been boosted up\n", boostIndex, temp->task.task_name);
+                // printf("++++>%dth, (%s) has been boosted up\n", boostIndex, temp->task.task_name);
             }
             allTasksHaveCostTime = 0;
             boostIndex += 1;
@@ -247,6 +255,7 @@ void *CPU_thread()
             // enqueue running_queue_highPriority first, because it fetched from ready_queue
             TAILQ_INSERT_TAIL(&running_queue_highPriority, first, next);
             // process this task
+            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start);
             scheduler(first);
         }
         else
@@ -294,8 +303,9 @@ void *CPU_thread()
             }
             else
             {
-                assert(TAILQ_EMPTY(&ready_queue) && TAILQ_EMPTY(&running_queue_highPriority) && TAILQ_EMPTY(&running_queue_mediumPriority) && TAILQ_EMPTY(&running_queue_lowPriority));
-                printf("numOfDoneTasks: %d, allTasks: %d\n", numOfDoneTasks, numOfAllTasks);
+                pthread_mutex_unlock(&mutex_CPU_prepare);
+                //assert(TAILQ_EMPTY(&ready_queue) && TAILQ_EMPTY(&running_queue_highPriority) && TAILQ_EMPTY(&running_queue_mediumPriority) && TAILQ_EMPTY(&running_queue_lowPriority));
+                //printf("numOfDoneTasks: %d, allTasks: %d\n", numOfDoneTasks, numOfAllTasks);
             }
         }
     }
@@ -415,7 +425,6 @@ void runTask(struct node *thisTask)
             TAILQ_REMOVE(&running_queue_mediumPriority, thisTask, next);
             // ennqueue this task(still has rest part needs to do) to running_queue_lowPriority
             TAILQ_INSERT_TAIL(&running_queue_lowPriority, thisTask, next);
-            // printf("insertQ********(%s)\n", thisTask->task.task_name);
         }
         pthread_mutex_unlock(&mutex_CPU_prepare);
     }
@@ -444,6 +453,7 @@ void runTask(struct node *thisTask)
                 allTasksHaveCostTime += thisTask->task.restRunTime;
                 // update the hasCostTime (new hasCostTime should be taskLength in priority 3)
                 thisTask->task.hasCostTime += thisTask->task.restRunTime;
+                thisTask->task.allHasCostTime += thisTask->task.restRunTime;
                 // update the restRunTime (new restRunTime should be 0)
                 thisTask->task.restRunTime -= thisTask->task.restRunTime;
                 assert(thisTask->task.restRunTime == 0);
@@ -453,8 +463,12 @@ void runTask(struct node *thisTask)
                 TAILQ_INSERT_TAIL(&done_queue, thisTask, next);
                 // this task has done
                 numOfDoneTasks += 1;
-                printf("         |-->(%s) is done (hasCostTime: %d, restRunTime: %d, doneTasks: %d)\n",
-                       thisTask->task.task_name, thisTask->task.hasCostTime, thisTask->task.restRunTime, numOfDoneTasks);
+                printf("         (%s)\n", thisTask->task.task_name);
+                printf("         |--> is done (allHasCostTime: %d, taskLength: %d, restRunTime: %d, doneTasks: %d)\n",
+                    thisTask->task.allHasCostTime, thisTask->task.task_length, thisTask->task.restRunTime, numOfDoneTasks);
+                clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end);
+                printf("               |-->turnaround time (usec: %ld, nsec: %ld)\n",
+                       (diff(start, end).tv_nsec)/1000, diff(start, end).tv_nsec);
             }
             else
             {
@@ -467,6 +481,7 @@ void runTask(struct node *thisTask)
                 allTasksHaveCostTime += quantumLength;
                 // update the hasCostTime as quantumLength
                 thisTask->task.hasCostTime += quantumLength;
+                thisTask->task.allHasCostTime += quantumLength;
                 // update the restRunTime
                 thisTask->task.restRunTime -= quantumLength;
                 // update microsleep
@@ -491,6 +506,7 @@ void runTask(struct node *thisTask)
                 allTasksHaveCostTime += thisTask->task.restRunTime;
                 // update the hasCostTime
                 thisTask->task.hasCostTime += thisTask->task.restRunTime;
+                thisTask->task.allHasCostTime += thisTask->task.restRunTime;
                 // update the restRunTime (new restRunTime should be 0)
                 thisTask->task.restRunTime -= thisTask->task.restRunTime;
                 assert(thisTask->task.restRunTime == 0);
@@ -500,8 +516,12 @@ void runTask(struct node *thisTask)
                 TAILQ_INSERT_TAIL(&done_queue, thisTask, next);
                 // this task has done
                 numOfDoneTasks += 1;
-                printf("         |-->(%s) is done (hasCostTime: %d, restRunTime: %d, doneTasks: %d)\n",
-                       thisTask->task.task_name, thisTask->task.hasCostTime, thisTask->task.restRunTime, numOfDoneTasks);
+                printf("         (%s)\n", thisTask->task.task_name);
+                printf("         |--> is done (allHasCostTime: %d, taskLength: %d, restRunTime: %d, doneTasks: %d)\n",
+                    thisTask->task.allHasCostTime, thisTask->task.task_length, thisTask->task.restRunTime, numOfDoneTasks);
+                clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end);
+                printf("               |-->turnaround time (usec: %ld, nsec: %ld)\n",
+                       (diff(start, end).tv_nsec)/1000, diff(start, end).tv_nsec);
             }
             else
             {
@@ -514,6 +534,7 @@ void runTask(struct node *thisTask)
                 allTasksHaveCostTime += quantumLength;
                 // update the hasCostTime as quantumLength
                 thisTask->task.hasCostTime += quantumLength;
+                thisTask->task.allHasCostTime += quantumLength;
                 // update the restRunTime
                 thisTask->task.restRunTime -= quantumLength;
                 // update microsleep
@@ -538,6 +559,7 @@ void runTask(struct node *thisTask)
                 allTasksHaveCostTime += thisTask->task.restRunTime;
                 // update the hasCostTime
                 thisTask->task.hasCostTime += thisTask->task.restRunTime;
+                thisTask->task.allHasCostTime += thisTask->task.restRunTime;
                 // update the restRunTime (new restRunTime should be 0)
                 thisTask->task.restRunTime -= thisTask->task.restRunTime;
                 assert(thisTask->task.restRunTime == 0);
@@ -547,8 +569,12 @@ void runTask(struct node *thisTask)
                 TAILQ_INSERT_TAIL(&done_queue, thisTask, next);
                 // this task has done
                 numOfDoneTasks += 1;
-                printf("         |-->(%s) is done (hasCostTime: %d, restRunTime: %d, doneTasks: %d)\n",
-                       thisTask->task.task_name, thisTask->task.hasCostTime, thisTask->task.restRunTime, numOfDoneTasks);
+                printf("         (%s)\n", thisTask->task.task_name);
+                printf("         |--> is done (allHasCostTime: %d, taskLength: %d, restRunTime: %d, doneTasks: %d)\n",
+                    thisTask->task.allHasCostTime, thisTask->task.task_length, thisTask->task.restRunTime, numOfDoneTasks);
+                clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end);
+                printf("               |-->turnaround time (usec: %ld, nsec: %ld)\n",
+                       (diff(start, end).tv_nsec)/1000, diff(start, end).tv_nsec);
             }
             else
             {
@@ -561,6 +587,7 @@ void runTask(struct node *thisTask)
                 allTasksHaveCostTime += quantumLength;
                 // update the hasCostTime as quantumLength
                 thisTask->task.hasCostTime += quantumLength;
+                thisTask->task.allHasCostTime += quantumLength;
                 // update the restRunTime
                 thisTask->task.restRunTime -= quantumLength;
                 // update microsleep
@@ -592,4 +619,27 @@ static void microsleep(unsigned int usecs)
         // need to loop, `nanosleep` might return before sleeping
         // for the complete time (see `man nanosleep` for details)
     } while (ret == -1 && (t.tv_sec || t.tv_nsec));
+}
+//------------------------------------------------------
+// myRoutine: diff
+//
+// PURPOSE: calculate time
+// INPUT PARAMETERS:
+//     struct timespec start
+//     struct timespec end
+//------------------------------------------------------
+struct timespec diff(struct timespec start, struct timespec end)
+{
+    struct timespec temp;
+    if ((end.tv_nsec - start.tv_nsec) < 0)
+    {
+        temp.tv_sec = end.tv_sec - start.tv_sec - 1;
+        temp.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
+    }
+    else
+    {
+        temp.tv_sec = end.tv_sec - start.tv_sec;
+        temp.tv_nsec = end.tv_nsec - start.tv_nsec;
+    }
+    return temp;
 }
