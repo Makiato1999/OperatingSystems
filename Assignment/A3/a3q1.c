@@ -70,6 +70,7 @@ struct taskObj
     int restRunTime;
     int priority;
     int needRunTime;
+    int isFirstResponse;
 };
 // define queue node
 struct node
@@ -188,6 +189,7 @@ void *reading_thread()
             newNode->task.hasCostTime = 0;                         // initialize hasCostTime as 0
             newNode->task.restRunTime = newNode->task.task_length; // initialize restrunTime as task_length
             newNode->task.priority = 3;                            // initialize highest priority as 3
+            newNode->task.isFirstResponse = 0;                     // 0 means this is first turn
             // enqueue to ready_queue
             TAILQ_INSERT_TAIL(&ready_queue, newNode, next);
             numOfAllTasks += 1;
@@ -223,7 +225,7 @@ void *CPU_thread()
     //@Test
     printf("CPU is working...\n");
     pthread_mutex_unlock(&mutex_CPU_wait);
-    
+
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start);
     while (1)
     {
@@ -270,8 +272,6 @@ void *CPU_thread()
             TAILQ_REMOVE(&ready_queue, first, next);
             // enqueue running_queue_highPriority first, because it fetched from ready_queue
             TAILQ_INSERT_TAIL(&running_queue_highPriority, first, next);
-            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end_responseTime);
-            calculate_all_responseTime(first);
             // process this task
             scheduler(first);
         }
@@ -351,6 +351,14 @@ void scheduler(struct node *thisTask)
         // printf("-->(%s) has no preemptive I/O, keep running\n", thisTask->task.task_name);
         // pthread_mutex_unlock(&mutex_CPU_prepare);
         // run its time slice
+        if (thisTask->task.isFirstResponse == 0)
+        {
+            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end_responseTime);
+            calculate_all_responseTime(thisTask);
+            thisTask->task.isFirstResponse += 1; 
+            // isFirstResponse > 0 means this is not first turn
+        }
+        assert(thisTask->task.isFirstResponse > 0);
         runTask(thisTask);
     }
     // task will do I/O
