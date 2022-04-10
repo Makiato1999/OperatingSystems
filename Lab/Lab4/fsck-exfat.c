@@ -112,6 +112,7 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
         main_boot_sector->jump_boot[1] == 'B' &&
         main_boot_sector->jump_boot[2] == 'h')
     {
+        printf("Check Pass\n");
     }
     else
     {
@@ -122,6 +123,7 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
         main_boot_sector->jump_boot[1] == '6' &&
         main_boot_sector->jump_boot[2] == 'h')
     {
+        printf("Check Pass\n");
     }
     else
     {
@@ -132,6 +134,7 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
         main_boot_sector->jump_boot[1] == '0' &&
         main_boot_sector->jump_boot[2] == 'h')
     {
+        printf("Check Pass\n");
     }
     else
     {
@@ -144,9 +147,26 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
     int i = 0;
     for (i = 0; i < 8; i++)
     {
-        if (main_boot_sector->fs_name[i] != valid_fileSysName[i])
+        if (main_boot_sector->fs_name[i] == valid_fileSysName[i])
+        {
+        }
+        else
         {
             printf("Inconsistent file system: FileSystemName must be 'EXFAT   ', value is '%s'.\n", main_boot_sector->fs_name);
+            exit(1);
+        }
+    }
+    printf("Check Pass\n");
+
+    // check MustBeZero
+    for (i = 0; i < 53; i++)
+    {
+        if (main_boot_sector->must_be_zero[i] == 0)
+        {
+        }
+        else
+        {
+            printf("Inconsistent file system: MustBeZero must be '0', value is '%s'.\n", main_boot_sector->must_be_zero);
             exit(1);
         }
     }
