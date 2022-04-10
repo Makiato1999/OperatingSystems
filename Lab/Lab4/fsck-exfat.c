@@ -34,13 +34,14 @@ typedef struct MAIN_BOOT_SECTOR
 #pragma pack(pop)
 
 void read_main_boot_sector(main_boot_sector *main_boot_sector, int handle);
+void parse_main_boot_sector(main_boot_sector *main_boot_sector);
 
 int main(int argc, char *argv[])
 {
     // exception
     if (argc < 2)
     {
-        printf("Invalid arguments\n");
+        perror("Invalid arguments\n");
         exit(1);
     }
     // read file
@@ -50,6 +51,7 @@ int main(int argc, char *argv[])
     // parse file
     main_boot_sector main_boot_sector;
     read_main_boot_sector(&main_boot_sector, fd);
+    parse_main_boot_sector(&main_boot_sector);
 
     return EXIT_SUCCESS;
 }
@@ -101,4 +103,51 @@ void read_main_boot_sector(main_boot_sector *main_boot_sector, int handle)
     read(handle, &main_boot_sector->bootcode, 390);
     // BootSignature 2
     read(handle, &main_boot_sector->boot_signature, 2);
+}
+
+void parse_main_boot_sector(main_boot_sector *main_boot_sector)
+{
+    // check JumpBoot
+    if (main_boot_sector->jump_boot[0] == 'E' &&
+        main_boot_sector->jump_boot[1] == 'B' &&
+        main_boot_sector->jump_boot[2] == 'h')
+    {
+    }
+    else
+    {
+        printf("Inconsistent file system: jump_boot must be 'EBh', value is '%s'.\n", main_boot_sector->jump_boot);
+        exit(1);
+    }
+    if (main_boot_sector->jump_boot[0] == '7' &&
+        main_boot_sector->jump_boot[1] == '6' &&
+        main_boot_sector->jump_boot[2] == 'h')
+    {
+    }
+    else
+    {
+        printf("Inconsistent file system: jump_boot must be '76h', value is '%s'.\n", main_boot_sector->jump_boot);
+        exit(1);
+    }
+    if (main_boot_sector->jump_boot[0] == '9' &&
+        main_boot_sector->jump_boot[1] == '0' &&
+        main_boot_sector->jump_boot[2] == 'h')
+    {
+    }
+    else
+    {
+        printf("Inconsistent file system: jump_boot must be '90h', value is '%s'.\n", main_boot_sector->jump_boot);
+        exit(1);
+    }
+
+    // check FileSystemName
+    char valid_fileSysName[8] = "EXFAT   ";
+    int i = 0;
+    for (i = 0; i < 8; i++)
+    {
+        if (main_boot_sector->fs_name[i] != valid_fileSysName[i])
+        {
+            printf("Inconsistent file system: FileSystemName must be 'EXFAT   ', value is '%s'.\n", main_boot_sector->fs_name);
+            exit(1);
+        }
+    }
 }
