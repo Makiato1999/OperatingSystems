@@ -116,7 +116,8 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
     }
     else
     {
-        printf("Inconsistent file system: jump_boot must be 'EBh', value is '%s'.\n", main_boot_sector->jump_boot);
+        printf("Inconsistent file system: jump_boot must be 'EBh', value is '%s'.\n",
+               main_boot_sector->jump_boot);
         exit(1);
     }
     if (main_boot_sector->jump_boot[0] == '7' &&
@@ -127,7 +128,8 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
     }
     else
     {
-        printf("Inconsistent file system: jump_boot must be '76h', value is '%s'.\n", main_boot_sector->jump_boot);
+        printf("Inconsistent file system: jump_boot must be '76h', value is '%s'.\n",
+               main_boot_sector->jump_boot);
         exit(1);
     }
     if (main_boot_sector->jump_boot[0] == '9' &&
@@ -138,7 +140,8 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
     }
     else
     {
-        printf("Inconsistent file system: jump_boot must be '90h', value is '%s'.\n", main_boot_sector->jump_boot);
+        printf("Inconsistent file system: jump_boot must be '90h', value is '%s'.\n",
+               main_boot_sector->jump_boot);
         exit(1);
     }
 
@@ -152,7 +155,8 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
         }
         else
         {
-            printf("Inconsistent file system: FileSystemName must be 'EXFAT   ', value is '%s'.\n", main_boot_sector->fs_name);
+            printf("Inconsistent file system: FileSystemName must be 'EXFAT   ', value is '%s'.\n",
+                   main_boot_sector->fs_name);
             exit(1);
         }
     }
@@ -166,8 +170,30 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
         }
         else
         {
-            printf("Inconsistent file system: MustBeZero must be '0', value is '%s'.\n", main_boot_sector->must_be_zero);
+            printf("Inconsistent file system: MustBeZero must be 0, value is '%s'.\n",
+                   main_boot_sector->must_be_zero);
             exit(1);
         }
     }
+
+    // check VolumeLength
+    uint64_t base = 0x1;
+    uint64_t valid_atleast = (base << 20) / (base << main_boot_sector->bytes_per_sector_shift);
+    uint64_t valid_atmost = ((base << 8) << 8) - 1;
+    if (main_boot_sector->volume_length >= valid_atleast &&
+        main_boot_sector->volume_length <= valid_atmost)
+    {
+    }
+    else
+    {
+        printf("Inconsistent file system: VolumeLength must be >= %lu and <= %lu, value is '%lu'.\n",
+               valid_atleast, valid_atmost, main_boot_sector->volume_length);
+        exit(1);
+    }
+
+    // check FatOffset
+    
+    // check FatLength
+    // check FirstClusterOfRootDirectory
+    // check BootSignature
 }
