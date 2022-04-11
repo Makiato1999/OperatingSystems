@@ -36,7 +36,7 @@ typedef struct MAIN_BOOT_SECTOR
 
 void read_main_boot_sector(main_boot_sector *main_boot_sector, int handle);
 void parse_main_boot_sector(main_boot_sector *main_boot_sector);
-void parse_bitmap(main_boot_sector *main_boot_sector);
+void parse_bitmap(main_boot_sector *main_boot_sector, int handle);
 
 int main(int argc, char *argv[])
 {
@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
     main_boot_sector main_boot_sector;
     read_main_boot_sector(&main_boot_sector, fd);
     parse_main_boot_sector(&main_boot_sector);
-    //parse_bitmap(&main_boot_sector);
+    parse_bitmap(&main_boot_sector, fd);
 
     return EXIT_SUCCESS;
 }
@@ -234,9 +234,15 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
     }
     printf("MBR appears to be consistent.\nFile system appears to be consistent.\n");
 }
-/*
-void parse_bitmap(main_boot_sector *main_boot_sector)
-{
 
+void parse_bitmap(main_boot_sector *main_boot_sector, int handle)
+{
+    // jump to the cluster_heap beginning
+    lseek(handle, main_boot_sector->cluster_heap_offset, SEEK_SET);
+    // jump two fatlength, then new location is cluster[2]
+    lseek(handle, (main_boot_sector->fat_length) * 2, SEEK_CUR);
+    // jump (first_cluster_of_root_directory - 2) index cluster
+    uint32_t newIndex = main_boot_sector->first_cluster_of_root_directory - 2;
+    lseek(handle, newIndex * 32, SEEK_CUR);
 }
-*/
+
