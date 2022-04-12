@@ -31,6 +31,10 @@ typedef struct MAIN_BOOT_SECTOR
     uint8_t reserved[7];
     uint8_t bootcode[390];
     uint16_t boot_signature;
+    uint8_t entryType_bitmap;
+    uint32_t firstCluster_bitmap;
+    uint64_t dataLength_bitmap;
+    uint8_t data;
 } main_boot_sector;
 #pragma pack(pop)
 
@@ -55,7 +59,7 @@ int main(int argc, char *argv[])
     read_main_boot_sector(&main_boot_sector, fd);
     parse_main_boot_sector(&main_boot_sector);
     parse_bitmap(&main_boot_sector, fd);
-
+    printf("File system appears to be consistent.\n");
     return EXIT_SUCCESS;
 }
 
@@ -111,7 +115,7 @@ void read_main_boot_sector(main_boot_sector *main_boot_sector, int handle)
 void parse_main_boot_sector(main_boot_sector *main_boot_sector)
 {
     // check JumpBoot
-    //printf("jump_boot: %x\n", main_boot_sector->jump_boot[0]);
+    // printf("jump_boot: %x\n", main_boot_sector->jump_boot[0]);
     if (main_boot_sector->jump_boot[0] == (uint8_t)0xEB &&
         main_boot_sector->jump_boot[1] == (uint8_t)0x76 &&
         main_boot_sector->jump_boot[2] == (uint8_t)0x90)
@@ -126,7 +130,7 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
     }
 
     // check FileSystemName
-    //printf("FileSystemName: %s\n", main_boot_sector->fs_name);
+    // printf("FileSystemName: %s\n", main_boot_sector->fs_name);
     char valid_fileSysName[8] = "EXFAT   ";
     int i = 0;
     for (i = 0; i < 8; i++)
@@ -153,7 +157,7 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
     printf("--->Check MustBeZero Pass\n");
 
     // check VolumeLength
-    //printf("VolumeLength: %lu\n", main_boot_sector->volume_length);
+    // printf("VolumeLength: %lu\n", main_boot_sector->volume_length);
     uint64_t base = 0x1;
     uint64_t valid_atleast = (base << 20) / (base << main_boot_sector->bytes_per_sector_shift);
     uint64_t valid_atmost = ((base << 8) << 8) - 1;
@@ -170,7 +174,7 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
     }
 
     // check FatOffset
-    //printf("FatOffset: %u\n", main_boot_sector->fat_offset);
+    // printf("FatOffset: %u\n", main_boot_sector->fat_offset);
     uint32_t valid_atmost_fatOffset = main_boot_sector->cluster_heap_offset - (main_boot_sector->fat_length * main_boot_sector->number_of_fats);
     if (main_boot_sector->fat_offset >= 24 &&
         main_boot_sector->fat_offset <= valid_atmost_fatOffset)
@@ -185,7 +189,7 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
     }
 
     // check FatLength
-    //printf("FatLength: %u\n", main_boot_sector->fat_length);
+    // printf("FatLength: %u\n", main_boot_sector->fat_length);
     uint32_t base32 = 0x1;
     uint32_t valid_atleast_fatLength = ((main_boot_sector->cluster_count + 2) * (base32 << 2)) / (base32 << main_boot_sector->bytes_per_sector_shift);
     uint32_t roundup_atleast = (uint32_t)valid_atleast_fatLength;
@@ -204,7 +208,7 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
     }
 
     // check FirstClusterOfRootDirectory
-    //printf("FirstClusterOfRootDirectory: %u\n", main_boot_sector->first_cluster_of_root_directory);
+    // printf("FirstClusterOfRootDirectory: %u\n", main_boot_sector->first_cluster_of_root_directory);
     uint32_t valid_atleast_rootDirectory = 2;
     uint32_t valid_atmost_rootDirectory = main_boot_sector->cluster_count + 1;
     if (main_boot_sector->first_cluster_of_root_directory >= valid_atleast_rootDirectory &&
@@ -220,7 +224,7 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
     }
 
     // check BootSignature
-    //printf("BootSignature: %x\n", main_boot_sector->boot_signature);
+    // printf("BootSignature: %x\n", main_boot_sector->boot_signature);
     uint16_t valid_BootSignature = 0xAA55;
     if (main_boot_sector->boot_signature == valid_BootSignature)
     {
@@ -232,17 +236,76 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
                main_boot_sector->boot_signature);
         exit(1);
     }
-    printf("MBR appears to be consistent.\nFile system appears to be consistent.\n");
+    printf("MBR appears to be consistent.\n");
 }
 
 void parse_bitmap(main_boot_sector *main_boot_sector, int handle)
 {
-    // jump to the cluster_heap beginning
     lseek(handle, main_boot_sector->cluster_heap_offset, SEEK_SET);
-    // jump two fatlength, then new location is cluster[2]
-    lseek(handle, (main_boot_sector->fat_length) * 2, SEEK_CUR);
-    // jump (first_cluster_of_root_directory - 2) index cluster
     uint32_t newIndex = main_boot_sector->first_cluster_of_root_directory - 2;
-    lseek(handle, newIndex * 32, SEEK_CUR);
-}
+    uint32_t base = 0x1;
+    lseek(handle, newIndex * (base << (main_boot_sector->sectors_per_cluster_shift)), SEEK_CUR);
+    uint8_t valid_entrytype = 0x81;
+    while (1)
+    {
+        read(handle, &main_boot_sector->entryType_bitmap, 1);
+        if (main_boot_sector->entryType_bitmap == valid_entrytype)
+        {
+            break;
+        }
+        lseek(handle, 31, SEEK_CUR);
+    }
+    printf("EntryType must be 0x81, value is %x.\n", main_boot_sector->entryType_bitmap);
+    printf("--->Check EntryType Pass\n");
+    lseek(handle, 19, SEEK_CUR);
+    read(handle, &main_boot_sector->firstCluster_bitmap, 4);
+    read(handle, &main_boot_sector->dataLength_bitmap, 8);
+    printf("dataLength_bitmap: %lu\n", main_boot_sector->dataLength_bitmap);
+    newIndex = main_boot_sector->firstCluster_bitmap - 2;
+    printf("newIndex: %d\n", newIndex);
+    lseek(handle, main_boot_sector->cluster_heap_offset, SEEK_SET);
+    lseek(handle, newIndex * (base << (main_boot_sector->sectors_per_cluster_shift)), SEEK_CUR);
+    uint64_t i = 0;
+    int bit_amount = 0;
+    //int bit_population = main_boot_sector->dataLength_bitmap * 8;
+    //int percent = 0;
+    for (i = 0; i < main_boot_sector->dataLength_bitmap; i++)
+    {
+        uint8_t data;
+        read(handle, &data, 1);
+        bit_amount += __builtin_popcount(data);
+        printf("bit_amount: %d\n", bit_amount);
+    }
+    /*
+    // find FirstCluster
+    lseek(handle, 19, SEEK_CUR);
+    read(handle, &main_boot_sector->firstCluster_bitmap, 4);
+    read(handle, &main_boot_sector->dataLength_bitmap, 8);
+    newIndex = main_boot_sector->firstCluster_bitmap - 2;
+    lseek(handle, main_boot_sector->cluster_heap_offset, SEEK_SET);
+    lseek(handle, newIndex * ((base << main_boot_sector->sectors_per_cluster_shift) * main_boot_sector->bytes_per_sector_shift), SEEK_CUR);
+    uint64_t i = 0;
+    printf("dataLength_bitmap: %d\n", newIndex);
 
+    int bit_amount = 0;
+    int bit_population = main_boot_sector->dataLength_bitmap * 8;
+    int percent = 0;
+    for (i = 0; i < main_boot_sector->dataLength_bitmap; i++)
+    {
+        uint8_t data;
+        read(handle, &data, 1);
+        bit_amount += __builtin_popcount(data);
+        printf("bit_amount: %d\n", bit_amount);
+    }
+    percent = bit_amount / bit_population;
+    if (percent == main_boot_sector->percent_in_use)
+    {
+        printf("--->Check FirstCluster Pass\n");
+    }
+    else
+    {
+        printf("Inconsistent file system: PercentInUse must be %d, value is %d/%d bits => %d%%.\n",
+               main_boot_sector->percent_in_use, bit_amount, bit_population, percent);
+        exit(1);
+    }*/
+}
