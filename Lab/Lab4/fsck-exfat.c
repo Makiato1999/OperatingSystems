@@ -241,71 +241,54 @@ void parse_main_boot_sector(main_boot_sector *main_boot_sector)
 
 void parse_bitmap(main_boot_sector *main_boot_sector, int handle)
 {
-    lseek(handle, main_boot_sector->cluster_heap_offset, SEEK_SET);
-    uint32_t newIndex = main_boot_sector->first_cluster_of_root_directory - 2;
-    uint32_t base = 0x1;
-    lseek(handle, newIndex * (base << (main_boot_sector->sectors_per_cluster_shift)), SEEK_CUR);
-    uint8_t valid_entrytype = 0x81;
+    // jump to cluster heap
+    lseek(handle, (main_boot_sector->cluster_heap_offset) * (1 << main_boot_sector->bytes_per_sector_shift), SEEK_SET);
+    // jump to first cluster
+    lseek(handle, (main_boot_sector->first_cluster_of_root_directory - 2) * (1 << main_boot_sector->sectors_per_cluster_shift) * (1 << main_boot_sector->bytes_per_sector_shift), SEEK_CUR);
     while (1)
     {
+        // check entry type
         read(handle, &main_boot_sector->entryType_bitmap, 1);
-        if (main_boot_sector->entryType_bitmap == valid_entrytype)
+        // printf("EntryType must be 0x81, value is %x.\n", main_boot_sector->entryType_bitmap);
+        if (main_boot_sector->entryType_bitmap == 0x81)
         {
+            printf("--->Check EntryType Pass\n");
             break;
         }
         lseek(handle, 31, SEEK_CUR);
     }
-    printf("EntryType must be 0x81, value is %x.\n", main_boot_sector->entryType_bitmap);
-    printf("--->Check EntryType Pass\n");
     lseek(handle, 19, SEEK_CUR);
     read(handle, &main_boot_sector->firstCluster_bitmap, 4);
+    // printf("newIndex: %d\n", main_boot_sector->firstCluster_bitmap);
     read(handle, &main_boot_sector->dataLength_bitmap, 8);
-    printf("dataLength_bitmap: %lu\n", main_boot_sector->dataLength_bitmap);
-    newIndex = main_boot_sector->firstCluster_bitmap - 2;
-    printf("newIndex: %d\n", newIndex);
-    lseek(handle, main_boot_sector->cluster_heap_offset, SEEK_SET);
-    lseek(handle, newIndex * (base << (main_boot_sector->sectors_per_cluster_shift)), SEEK_CUR);
-    uint64_t i = 0;
-    int bit_amount = 0;
-    //int bit_population = main_boot_sector->dataLength_bitmap * 8;
-    //int percent = 0;
-    for (i = 0; i < main_boot_sector->dataLength_bitmap; i++)
-    {
-        uint8_t data;
-        read(handle, &data, 1);
-        bit_amount += __builtin_popcount(data);
-        printf("bit_amount: %d\n", bit_amount);
-    }
-    /*
-    // find FirstCluster
-    lseek(handle, 19, SEEK_CUR);
-    read(handle, &main_boot_sector->firstCluster_bitmap, 4);
-    read(handle, &main_boot_sector->dataLength_bitmap, 8);
-    newIndex = main_boot_sector->firstCluster_bitmap - 2;
-    lseek(handle, main_boot_sector->cluster_heap_offset, SEEK_SET);
-    lseek(handle, newIndex * ((base << main_boot_sector->sectors_per_cluster_shift) * main_boot_sector->bytes_per_sector_shift), SEEK_CUR);
-    uint64_t i = 0;
-    printf("dataLength_bitmap: %d\n", newIndex);
+    // printf("dataLength_bitmap: %lu\n", main_boot_sector->dataLength_bitmap);
 
+    // jump to cluster heap
+    lseek(handle, (main_boot_sector->cluster_heap_offset) * (1 << main_boot_sector->bytes_per_sector_shift), SEEK_SET);
+    // jump to first cluster
+    lseek(handle, (main_boot_sector->firstCluster_bitmap - 2) * (1 << main_boot_sector->sectors_per_cluster_shift) * (1 << main_boot_sector->bytes_per_sector_shift), SEEK_CUR);
+    // check bitmap
+    uint64_t i = 0;
     int bit_amount = 0;
-    int bit_population = main_boot_sector->dataLength_bitmap * 8;
-    int percent = 0;
     for (i = 0; i < main_boot_sector->dataLength_bitmap; i++)
     {
         uint8_t data;
         read(handle, &data, 1);
         bit_amount += __builtin_popcount(data);
-        printf("bit_amount: %d\n", bit_amount);
     }
-    percent = bit_amount / bit_population;
-    if (percent == main_boot_sector->percent_in_use)
+    // printf("bit_amount: %d\n", bit_amount);
+    int bit_population = main_boot_sector->dataLength_bitmap * 8;
+    float percent = 0;
+    percent = (float)bit_amount / bit_population * 100.0;
+    // printf("float: %.2f\n", percent);
+    if ((int)percent == main_boot_sector->percent_in_use)
     {
-        printf("--->Check FirstCluster Pass\n");
+        printf("--->Check PercentInUse Pass\n");
     }
     else
     {
         printf("Inconsistent file system: PercentInUse must be %d, value is %d/%d bits => %d%%.\n",
-               main_boot_sector->percent_in_use, bit_amount, bit_population, percent);
+               main_boot_sector->percent_in_use, bit_amount, bit_population, (int)percent);
         exit(1);
-    }*/
+    }
 }
