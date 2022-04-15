@@ -161,6 +161,7 @@ void process_info_command(main_boot_sector *main_boot_sector, int handle, volume
     int bits_population = 0;
     int unused_bits_amount = 0;
     int freeSpace = 0;
+    uint8_t sectorsPerCluster = 0;
 
     // Volume label
     // jump to cluster heap, then jump to first cluster
@@ -223,7 +224,9 @@ void process_info_command(main_boot_sector *main_boot_sector, int handle, volume
     printf("- Free space on the volume: %dKB\n", freeSpace);
 
     // The cluster size, both in sectors and in bytes OR KB
-    
+    sectorsPerCluster = 0x1 << main_boot_sector->sectors_per_cluster_shift;
+    printf("- The cluster size is %d sectors\n", sectorsPerCluster);
+    printf("- The cluster size is %d bytes\n", main_boot_sector->cluster_count);
 }
 /**
  * Convert a Unicode-formatted string containing only ASCII characters
