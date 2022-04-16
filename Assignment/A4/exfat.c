@@ -61,15 +61,55 @@ typedef struct ALLOCATION_BITMAP
     uint64_t DataLength;
 } allocation_bitmap;
 
+typedef struct FILE
+{
+    uint8_t EntryType;
+    uint8_t SecondaryCount;
+    uint16_t SetChecksum;
+    uint16_t FileAttributes;
+    uint16_t Reserved1;
+    uint32_t CreateTimestamp;
+    uint32_t LastModifiedTimestamp;
+    uint32_t LastAccessedTimestamp;
+    uint8_t Create10msIncrement;
+    uint8_t LastModified10msIncrement;
+    uint8_t CreateUtcOffset;
+    uint8_t LastModifiedUtcOffset;
+    uint8_t LastAccessedUtcOffset;
+    char Reserved2[7];
+} file;
+
+typedef struct STREAM_EXTENSION
+{
+    uint8_t EntryType;
+    uint8_t GeneralSecondaryFlags;
+    uint8_t Reserved1;
+    uint8_t NameLength;
+    uint16_t NameHash;
+    uint16_t Reserved2;
+    uint64_t ValidDataLength;
+    uint32_t Reserved3;
+    uint32_t FirstCluster;
+    uint64_t DataLength;
+} stream_extension;
+
+typedef struct FILE_NAME
+{
+    uint8_t EntryType;
+    uint8_t GeneralSecondaryFlags;
+    char FileName[30];
+} file_name;
+
 uint64_t sectorsPerCluster = 0;
 uint64_t bytesPerSector = 0;
 uint64_t bytesPerCluster = 0;
+uint8_t temp_entryType;
 
 #pragma pack(pop)
 
 void read_volume(main_boot_sector *main_boot_sector, int handle);
 void process_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
-//void process_list_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
+void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
 static char *unicode2ascii(uint16_t *unicode_string, uint8_t length);
 
 int main(int argc, char *argv[])
@@ -88,6 +128,9 @@ int main(int argc, char *argv[])
     main_boot_sector main_boot_sector;
     volume_label volume_label;
     allocation_bitmap allocation_bitmap;
+    file file;
+    stream_extension stream_extension;
+    file_name file_name;
     read_volume(&main_boot_sector, fd);
     // check command
     if (strcmp(commandName, "info") == 0)
@@ -98,7 +141,7 @@ int main(int argc, char *argv[])
     else if (strcmp(commandName, "list") == 0)
     {
         printf("command: %s\n", commandName);
-        //process_list_command(&main_boot_sector, fd, &volume_label, &allocation_bitmap);
+        prepare_list_command(&main_boot_sector, fd, &file, &stream_extension, &file_name);
     }
     else if (strcmp(commandName, "get") == 0)
     {
@@ -178,7 +221,6 @@ void process_info_command(main_boot_sector *main_boot_sector, int handle, volume
     assert(handle >= 0);
     assert(volume_label != NULL);
 
-    uint8_t temp_entryType;
     uint64_t i = 0;
     int used_bitmap_cells_ap_amount = 0;
     uint64_t bitmap_cells_population = 0;
@@ -256,19 +298,109 @@ void process_info_command(main_boot_sector *main_boot_sector, int handle, volume
     printf("- The cluster size is %lu bytes\n", bytesPerCluster);
 }
 //------------------------------------------------------
-// myRoutine: process_list_command
+// myRoutine: prepare_list_command
 //
 // PURPOSE: add all tasks to ready_queue
 // INPUT PARAMETERS:
 //     main_boot_sector *main_boot_sector
 //     int handle
-//     volume_label *volume_label
-//     allocation_bitmap *allocation_bitmap
+//     file *file
+//     stream_extension *stream_extension
+//     file_name *file_name
 //------------------------------------------------------
-/*
-void process_list_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap)
+void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name)
 {
-}*/
+    assert(main_boot_sector != NULL);
+    assert(handle >= 0);
+    assert(file != NULL);
+    assert(stream_extension != NULL);
+    assert(file_name != NULL);
+
+    sectorsPerCluster = 1 << main_boot_sector->sectors_per_cluster_shift;
+    bytesPerSector = 1 << main_boot_sector->bytes_per_sector_shift;
+    bytesPerCluster = (1 << main_boot_sector->sectors_per_cluster_shift) * (1 << main_boot_sector->bytes_per_sector_shift);
+
+    // file entry
+    // jump to cluster heap, then jump to first cluster
+    lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
+    lseek(handle, (main_boot_sector->first_cluster_of_root_directory - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
+    while (1)
+    {
+        read(handle, &temp_entryType, 1);
+        if (temp_entryType == 0x85)
+        {
+            lseek(handle, -1, SEEK_CUR);
+            read(handle, &file->EntryType, 1);
+            read(handle, &file->SecondaryCount, 1);
+            read(handle, &file->SetChecksum, 2);
+            read(handle, &file->FileAttributes, 2);
+            read(handle, &file->Reserved1, 2);
+            read(handle, &file->CreateTimestamp, 4);
+            read(handle, &file->LastModifiedTimestamp, 4);
+            read(handle, &file->LastAccessedTimestamp, 4);
+            read(handle, &file->Create10msIncrement, 1);
+            read(handle, &file->LastModified10msIncrement, 1);
+            read(handle, &file->CreateUtcOffset, 1);
+            read(handle, &file->LastModifiedUtcOffset, 1);
+            read(handle, &file->LastAccessedUtcOffset, 1);
+            read(handle, &file->Reserved2, 7);
+            break;
+        }
+        else
+        {
+            lseek(handle, 31, SEEK_CUR);
+        }
+    }
+
+    // stream extension entry
+    // jump to cluster heap, then jump to first cluster
+    lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
+    lseek(handle, (main_boot_sector->first_cluster_of_root_directory - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
+    while (1)
+    {
+        read(handle, &temp_entryType, 1);
+        if (temp_entryType == 0xC0)
+        {
+            lseek(handle, -1, SEEK_CUR);
+            read(handle, &stream_extension->EntryType, 1);
+            read(handle, &stream_extension->GeneralSecondaryFlags, 1);
+            read(handle, &stream_extension->Reserved1, 1);
+            read(handle, &stream_extension->NameLength, 1);
+            read(handle, &stream_extension->NameHash, 2);
+            read(handle, &stream_extension->Reserved2, 2);
+            read(handle, &stream_extension->ValidDataLength, 8);
+            read(handle, &stream_extension->Reserved3, 4);
+            read(handle, &stream_extension->FirstCluster, 4);
+            read(handle, &stream_extension->DataLength, 8);
+            break;
+        }
+        else
+        {
+            lseek(handle, 31, SEEK_CUR);
+        }
+    }
+
+    // file name entry
+    // jump to cluster heap, then jump to first cluster
+    lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
+    lseek(handle, (main_boot_sector->first_cluster_of_root_directory - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
+    while (1)
+    {
+        read(handle, &temp_entryType, 1);
+        if (temp_entryType == 0xC1)
+        {
+            lseek(handle, -1, SEEK_CUR);
+            read(handle, &file_name->EntryType, 1);
+            read(handle, &file_name->GeneralSecondaryFlags, 1);
+            read(handle, &file_name->FileName, 30);
+            break;
+        }
+        else
+        {
+            lseek(handle, 31, SEEK_CUR);
+        }
+    }
+}
 /**
  * Convert a Unicode-formatted string containing only ASCII characters
  * into a regular ASCII-formatted string (16 bit chars to 8 bit
