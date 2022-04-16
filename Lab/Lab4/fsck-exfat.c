@@ -277,7 +277,7 @@ void parse_bitmap(main_boot_sector *main_boot_sector, int handle)
         bit_amount += __builtin_popcount(data);
     }
     // printf("bit_amount: %d\n", bit_amount);
-    int bit_population = main_boot_sector->dataLength_bitmap * 8;
+    int bit_population = main_boot_sector->cluster_count;
     float percent = 0;
     percent = (float)bit_amount / bit_population * 100.0;
     // printf("float: %.2f\n", percent);
