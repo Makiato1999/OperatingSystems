@@ -82,8 +82,10 @@ typedef struct FILE
 typedef struct STREAM_EXTENSION
 {
     uint8_t EntryType;
-    uint8_t GeneralSecondaryFlags;
+    char GeneralSecondaryFlags[8];
     uint8_t Reserved1;
+    // The valid number of File Name directory entries in a File directory entry set is NameLength / 15, 
+    // rounded up to the nearest integer.
     uint8_t NameLength;
     uint16_t NameHash;
     uint16_t Reserved2;
@@ -97,9 +99,10 @@ typedef struct FILE_NAME
 {
     uint8_t EntryType;
     uint8_t GeneralSecondaryFlags;
-    char FileName[30];
+    uint16_t FileName[30];
 } file_name;
 
+int fd = 0;
 uint64_t sectorsPerCluster = 0;
 uint64_t bytesPerSector = 0;
 uint64_t bytesPerCluster = 0;
@@ -111,6 +114,7 @@ void read_volume(main_boot_sector *main_boot_sector, int handle);
 void prepare_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
 void print_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
 void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
+void parse_list_command(main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
 static char *unicode2ascii(uint16_t *unicode_string, uint8_t length);
 
 int main(int argc, char *argv[])
@@ -125,7 +129,7 @@ int main(int argc, char *argv[])
     char *volumeName = argv[1];
     char *commandName = argv[2];
     // read volume
-    int fd = open(volumeName, O_RDONLY);
+    fd = open(volumeName, O_RDONLY);
     main_boot_sector main_boot_sector;
     volume_label volume_label;
     allocation_bitmap allocation_bitmap;
@@ -144,6 +148,7 @@ int main(int argc, char *argv[])
     {
         printf("command: %s\n", commandName);
         prepare_list_command(&main_boot_sector, fd, &file, &stream_extension, &file_name);
+        parse_list_command(&main_boot_sector, fd, &file, &stream_extension, &file_name);
     }
     else if (strcmp(commandName, "get") == 0)
     {
@@ -369,6 +374,7 @@ void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *
             lseek(handle, 31, SEEK_CUR);
         }
     }
+    printf("numberOfFollowingEntries: %hhu\n", file->SecondaryCount);
 
     // stream extension entry
     // jump to cluster heap, then jump to first cluster
@@ -397,6 +403,8 @@ void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *
             lseek(handle, 31, SEEK_CUR);
         }
     }
+    printf("FirstCluster: %d\n", stream_extension->FirstCluster);
+    printf("DataLength: %lu\n", stream_extension->DataLength);
 
     // file name entry
     // jump to cluster heap, then jump to first cluster
@@ -418,6 +426,28 @@ void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *
             lseek(handle, 31, SEEK_CUR);
         }
     }
+    printf("FileName: %s\n", unicode2ascii(file_name->FileName, stream_extension->NameLength));
+}
+//------------------------------------------------------
+// myRoutine: parse_list_command
+//
+// PURPOSE: parse entries: file, stream_extension, file_name
+// INPUT PARAMETERS:
+//     main_boot_sector *main_boot_sector
+//     int handle
+//     file *file
+//     stream_extension *stream_extension
+//     file_name *file_name
+//------------------------------------------------------
+void parse_list_command(main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name)
+{
+    assert(main_boot_sector != NULL);
+    assert(handle >= 0);
+    assert(file != NULL);
+    assert(stream_extension != NULL);
+    assert(file_name != NULL);
+
+
 }
 /**
  * Convert a Unicode-formatted string containing only ASCII characters
