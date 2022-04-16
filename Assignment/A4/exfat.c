@@ -108,7 +108,8 @@ uint8_t temp_entryType;
 #pragma pack(pop)
 
 void read_volume(main_boot_sector *main_boot_sector, int handle);
-void process_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
+void prepare_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
+void print_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
 void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
 static char *unicode2ascii(uint16_t *unicode_string, uint8_t length);
 
@@ -136,7 +137,8 @@ int main(int argc, char *argv[])
     if (strcmp(commandName, "info") == 0)
     {
         printf("command: %s\n", commandName);
-        process_info_command(&main_boot_sector, fd, &volume_label, &allocation_bitmap);
+        prepare_info_command(&main_boot_sector, fd, &volume_label, &allocation_bitmap);
+        print_info_command(&main_boot_sector, fd, &volume_label, &allocation_bitmap);
     }
     else if (strcmp(commandName, "list") == 0)
     {
@@ -152,7 +154,7 @@ int main(int argc, char *argv[])
 //------------------------------------------------------
 // myRoutine: read_volume
 //
-// PURPOSE: add all tasks to ready_queue
+// PURPOSE: read and save main_boot_sector
 // INPUT PARAMETERS:
 //     main_boot_sector *main_boot_sector
 //     int handle
@@ -206,26 +208,20 @@ void read_volume(main_boot_sector *main_boot_sector, int handle)
     read(handle, &main_boot_sector->boot_signature, 2);
 }
 //------------------------------------------------------
-// myRoutine: process_info_command
+// myRoutine: prepare_info_command
 //
-// PURPOSE: add all tasks to ready_queue
+// PURPOSE: read and save volume_label and allocation_bitmap
 // INPUT PARAMETERS:
 //     main_boot_sector *main_boot_sector
 //     int handle
 //     volume_label *volume_label
 //     allocation_bitmap *allocation_bitmap
 //------------------------------------------------------
-void process_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap)
+void prepare_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap)
 {
     assert(main_boot_sector != NULL);
     assert(handle >= 0);
     assert(volume_label != NULL);
-
-    uint64_t i = 0;
-    int used_bitmap_cells_ap_amount = 0;
-    uint64_t bitmap_cells_population = 0;
-    int unused_bitmap_cells_amount = 0;
-    uint64_t freeSpace = 0;
 
     sectorsPerCluster = 1 << main_boot_sector->sectors_per_cluster_shift;
     bytesPerSector = 1 << main_boot_sector->bytes_per_sector_shift;
@@ -251,11 +247,6 @@ void process_info_command(main_boot_sector *main_boot_sector, int handle, volume
             lseek(handle, 31, SEEK_CUR);
         }
     }
-    char *temp = unicode2ascii(volume_label->VolumeLabel, 22);
-    printf("- Volume label: %s\n", temp);
-
-    // Volume serial number
-    printf("- Volume serial number: %u\n", main_boot_sector->volume_serial_number);
 
     // Free space on the volume in KB
     // jump to cluster heap, then jump to first cluster
@@ -279,6 +270,35 @@ void process_info_command(main_boot_sector *main_boot_sector, int handle, volume
             lseek(handle, 31, SEEK_CUR);
         }
     }
+}
+//------------------------------------------------------
+// myRoutine: print_info_command
+//
+// PURPOSE: print info
+// INPUT PARAMETERS:
+//     main_boot_sector *main_boot_sector
+//     int handle
+//     volume_label *volume_label
+//     allocation_bitmap *allocation_bitmap
+//------------------------------------------------------
+void print_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap)
+{
+    assert(main_boot_sector != NULL);
+    assert(handle >= 0);
+    assert(volume_label != NULL);
+
+    uint64_t i = 0;
+    int used_bitmap_cells_ap_amount = 0;
+    uint64_t bitmap_cells_population = 0;
+    int unused_bitmap_cells_amount = 0;
+    uint64_t freeSpace = 0;
+
+    // Volume label
+    char *temp = unicode2ascii(volume_label->VolumeLabel, 22);
+    printf("- Volume label: %s\n", temp);
+    // Volume serial number
+    printf("- Volume serial number: %u\n", main_boot_sector->volume_serial_number);
+    // Free space
     lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
     lseek(handle, (allocation_bitmap->FirstCluster - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
     for (i = 0; i < allocation_bitmap->DataLength; i++)
@@ -286,13 +306,11 @@ void process_info_command(main_boot_sector *main_boot_sector, int handle, volume
         uint8_t data;
         read(handle, &data, 1);
         used_bitmap_cells_ap_amount += __builtin_popcount(data);
-    }
-    // total have cluster_count bitmap cells
+    } // total have cluster_count bitmap cells
     bitmap_cells_population = main_boot_sector->cluster_count;
     unused_bitmap_cells_amount = bitmap_cells_population - used_bitmap_cells_ap_amount;
     freeSpace = unused_bitmap_cells_amount * bytesPerCluster / 1024;
     printf("- Free space on the volume: %luKB\n", freeSpace);
-
     // The cluster size, both in sectors and in bytes OR KB
     printf("- The cluster size is %lu sectors\n", sectorsPerCluster);
     printf("- The cluster size is %lu bytes\n", bytesPerCluster);
@@ -300,7 +318,7 @@ void process_info_command(main_boot_sector *main_boot_sector, int handle, volume
 //------------------------------------------------------
 // myRoutine: prepare_list_command
 //
-// PURPOSE: add all tasks to ready_queue
+// PURPOSE: read and save file, stream_extension, file_name
 // INPUT PARAMETERS:
 //     main_boot_sector *main_boot_sector
 //     int handle
