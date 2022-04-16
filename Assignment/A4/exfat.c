@@ -61,10 +61,15 @@ typedef struct ALLOCATION_BITMAP
     uint64_t DataLength;
 } allocation_bitmap;
 
+uint64_t sectorsPerCluster = 0;
+uint64_t bytesPerSector = 0;
+uint64_t bytesPerCluster = 0;
+
 #pragma pack(pop)
 
 void read_volume(main_boot_sector *main_boot_sector, int handle);
 void process_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
+// void process_list_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
 static char *unicode2ascii(uint16_t *unicode_string, uint8_t length);
 
 int main(int argc, char *argv[])
@@ -92,7 +97,8 @@ int main(int argc, char *argv[])
     }
     else if (strcmp(commandName, "list") == 0)
     {
-        /* code */
+        printf("command: %s\n", commandName);
+        // process_list_command(&main_boot_sector, fd, &volume_label, &allocation_bitmap);
     }
     else if (strcmp(commandName, "get") == 0)
     {
@@ -100,7 +106,14 @@ int main(int argc, char *argv[])
     }
     return EXIT_SUCCESS;
 }
-
+//------------------------------------------------------
+// myRoutine: read_volume
+//
+// PURPOSE: add all tasks to ready_queue
+// INPUT PARAMETERS:
+//     main_boot_sector *main_boot_sector
+//     int handle
+//------------------------------------------------------
 void read_volume(main_boot_sector *main_boot_sector, int handle)
 {
     assert(main_boot_sector != NULL);
@@ -149,6 +162,16 @@ void read_volume(main_boot_sector *main_boot_sector, int handle)
     // BootSignature 2
     read(handle, &main_boot_sector->boot_signature, 2);
 }
+//------------------------------------------------------
+// myRoutine: process_info_command
+//
+// PURPOSE: add all tasks to ready_queue
+// INPUT PARAMETERS:
+//     main_boot_sector *main_boot_sector
+//     int handle
+//     volume_label *volume_label
+//     allocation_bitmap *allocation_bitmap
+//------------------------------------------------------
 void process_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap)
 {
     assert(main_boot_sector != NULL);
@@ -158,16 +181,17 @@ void process_info_command(main_boot_sector *main_boot_sector, int handle, volume
     uint8_t temp_entryType;
     uint64_t i = 0;
     int used_bits_amount = 0;
-    int bits_population = 0;
-    int unused_bits_amount = 0;
-    int freeSpace = 0;
-    uint8_t sectorsPerCluster = 0;
-    uint64_t bytesPerCluster = 0;
+    uint64_t bits_population = 0;
+    // int unused_bits_amount = 0;
+    //int freeSpace = 0;
 
+    sectorsPerCluster = 1 << main_boot_sector->sectors_per_cluster_shift;
+    bytesPerSector = 1 << main_boot_sector->bytes_per_sector_shift;
+    bytesPerCluster = (1 << main_boot_sector->sectors_per_cluster_shift) * (1 << main_boot_sector->bytes_per_sector_shift);
     // Volume label
     // jump to cluster heap, then jump to first cluster
-    lseek(handle, (main_boot_sector->cluster_heap_offset) * (1 << main_boot_sector->bytes_per_sector_shift), SEEK_SET);
-    lseek(handle, (main_boot_sector->first_cluster_of_root_directory - 2) * (1 << main_boot_sector->sectors_per_cluster_shift) * (1 << main_boot_sector->bytes_per_sector_shift), SEEK_CUR);
+    lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
+    lseek(handle, (main_boot_sector->first_cluster_of_root_directory - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
     while (1)
     {
         read(handle, &temp_entryType, 1);
@@ -193,8 +217,8 @@ void process_info_command(main_boot_sector *main_boot_sector, int handle, volume
 
     // Free space on the volume in KB
     // jump to cluster heap, then jump to first cluster
-    lseek(handle, (main_boot_sector->cluster_heap_offset) * (1 << main_boot_sector->bytes_per_sector_shift), SEEK_SET);
-    lseek(handle, (main_boot_sector->first_cluster_of_root_directory - 2) * (1 << main_boot_sector->sectors_per_cluster_shift) * (1 << main_boot_sector->bytes_per_sector_shift), SEEK_CUR);
+    lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
+    lseek(handle, (main_boot_sector->first_cluster_of_root_directory - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
     while (1)
     {
         read(handle, &temp_entryType, 1);
@@ -213,23 +237,37 @@ void process_info_command(main_boot_sector *main_boot_sector, int handle, volume
             lseek(handle, 31, SEEK_CUR);
         }
     }
+    printf("- DataLength: %lu\n", allocation_bitmap->DataLength);
+    lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
+    lseek(handle, (allocation_bitmap->FirstCluster - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
     for (i = 0; i < allocation_bitmap->DataLength; i++)
     {
         uint8_t data;
         read(handle, &data, 1);
         used_bits_amount += __builtin_popcount(data);
     }
-    bits_population = allocation_bitmap->DataLength * 8;
-    unused_bits_amount = bits_population - used_bits_amount;
-    freeSpace = unused_bits_amount / 1024;
-    printf("- Free space on the volume: %dKB\n", freeSpace);
+    printf("- bits_population: %lu\n", bits_population);
+    printf("- Free space on the volume: %luKB\n", ((main_boot_sector->cluster_count - used_bits_amount) * bytesPerCluster) / 1024);
 
     // The cluster size, both in sectors and in bytes OR KB
-    sectorsPerCluster = 1 << main_boot_sector->sectors_per_cluster_shift;
-    bytesPerCluster = (1 << main_boot_sector->sectors_per_cluster_shift) * (1 << main_boot_sector->bytes_per_sector_shift);
-    printf("- The cluster size is %d sectors\n", sectorsPerCluster);
+    printf("- The cluster size is %lu sectors\n", sectorsPerCluster);
     printf("- The cluster size is %lu bytes\n", bytesPerCluster);
 }
+//------------------------------------------------------
+// myRoutine: process_list_command
+//
+// PURPOSE: add all tasks to ready_queue
+// INPUT PARAMETERS:
+//     main_boot_sector *main_boot_sector
+//     int handle
+//     volume_label *volume_label
+//     allocation_bitmap *allocation_bitmap
+//------------------------------------------------------
+/*
+void process_list_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap)
+{
+
+}*/
 /**
  * Convert a Unicode-formatted string containing only ASCII characters
  * into a regular ASCII-formatted string (16 bit chars to 8 bit
