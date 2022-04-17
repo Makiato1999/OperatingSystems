@@ -84,7 +84,7 @@ typedef struct STREAM_EXTENSION
     uint8_t EntryType;
     char GeneralSecondaryFlags[8];
     uint8_t Reserved1;
-    // The valid number of File Name directory entries in a File directory entry set is NameLength / 15, 
+    // The valid number of File Name directory entries in a File directory entry set is NameLength / 15,
     // rounded up to the nearest integer.
     uint8_t NameLength;
     uint16_t NameHash;
@@ -114,7 +114,7 @@ void read_volume(main_boot_sector *main_boot_sector, int handle);
 void prepare_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
 void print_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
 void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
-void parse_list_command(main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
+void parse_list_command(uint32_t root);
 static char *unicode2ascii(uint16_t *unicode_string, uint8_t length);
 
 int main(int argc, char *argv[])
@@ -148,7 +148,6 @@ int main(int argc, char *argv[])
     {
         printf("command: %s\n", commandName);
         prepare_list_command(&main_boot_sector, fd, &file, &stream_extension, &file_name);
-        parse_list_command(&main_boot_sector, fd, &file, &stream_extension, &file_name);
     }
     else if (strcmp(commandName, "get") == 0)
     {
@@ -343,90 +342,118 @@ void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *
     bytesPerSector = 1 << main_boot_sector->bytes_per_sector_shift;
     bytesPerCluster = (1 << main_boot_sector->sectors_per_cluster_shift) * (1 << main_boot_sector->bytes_per_sector_shift);
 
-    // file entry
-    // jump to cluster heap, then jump to first cluster
     lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
     lseek(handle, (main_boot_sector->first_cluster_of_root_directory - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
-    while (1)
-    {
-        read(handle, &temp_entryType, 1);
-        if (temp_entryType == 0x85)
-        {
-            lseek(handle, -1, SEEK_CUR);
-            read(handle, &file->EntryType, 1);
-            read(handle, &file->SecondaryCount, 1);
-            read(handle, &file->SetChecksum, 2);
-            read(handle, &file->FileAttributes, 2);
-            read(handle, &file->Reserved1, 2);
-            read(handle, &file->CreateTimestamp, 4);
-            read(handle, &file->LastModifiedTimestamp, 4);
-            read(handle, &file->LastAccessedTimestamp, 4);
-            read(handle, &file->Create10msIncrement, 1);
-            read(handle, &file->LastModified10msIncrement, 1);
-            read(handle, &file->CreateUtcOffset, 1);
-            read(handle, &file->LastModifiedUtcOffset, 1);
-            read(handle, &file->LastAccessedUtcOffset, 1);
-            read(handle, &file->Reserved2, 7);
-            break;
-        }
-        else
-        {
-            lseek(handle, 31, SEEK_CUR);
-        }
-    }
-    printf("numberOfFollowingEntries: %hhu\n", file->SecondaryCount);
+    uint64_t i = 0;
+    uint64_t temp_DataLength = 0;
 
-    // stream extension entry
-    // jump to cluster heap, then jump to first cluster
-    lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
-    lseek(handle, (main_boot_sector->first_cluster_of_root_directory - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
-    while (1)
+    do
     {
-        read(handle, &temp_entryType, 1);
-        if (temp_entryType == 0xC0)
+        printf("----------- directory entry set -------------\n");
+        // file entry
+        // jump to cluster heap, then jump to first cluster
+        while (1)
         {
-            lseek(handle, -1, SEEK_CUR);
-            read(handle, &stream_extension->EntryType, 1);
-            read(handle, &stream_extension->GeneralSecondaryFlags, 1);
-            read(handle, &stream_extension->Reserved1, 1);
-            read(handle, &stream_extension->NameLength, 1);
-            read(handle, &stream_extension->NameHash, 2);
-            read(handle, &stream_extension->Reserved2, 2);
-            read(handle, &stream_extension->ValidDataLength, 8);
-            read(handle, &stream_extension->Reserved3, 4);
-            read(handle, &stream_extension->FirstCluster, 4);
-            read(handle, &stream_extension->DataLength, 8);
-            break;
+            read(handle, &temp_entryType, 1);
+            if (temp_entryType == 0x85)
+            {
+                lseek(handle, -1, SEEK_CUR);
+                read(handle, &file->EntryType, 1);
+                read(handle, &file->SecondaryCount, 1);
+                read(handle, &file->SetChecksum, 2);
+                read(handle, &file->FileAttributes, 2);
+                read(handle, &file->Reserved1, 2);
+                read(handle, &file->CreateTimestamp, 4);
+                read(handle, &file->LastModifiedTimestamp, 4);
+                read(handle, &file->LastAccessedTimestamp, 4);
+                read(handle, &file->Create10msIncrement, 1);
+                read(handle, &file->LastModified10msIncrement, 1);
+                read(handle, &file->CreateUtcOffset, 1);
+                read(handle, &file->LastModifiedUtcOffset, 1);
+                read(handle, &file->LastAccessedUtcOffset, 1);
+                read(handle, &file->Reserved2, 7);
+                break;
+            }
+            else
+            {
+                lseek(handle, 31, SEEK_CUR);
+            }
         }
-        else
-        {
-            lseek(handle, 31, SEEK_CUR);
-        }
-    }
-    printf("FirstCluster: %d\n", stream_extension->FirstCluster);
-    printf("DataLength: %lu\n", stream_extension->DataLength);
+        // printf("numberOfFollowingEntries: %hhu\n", file->SecondaryCount);
 
-    // file name entry
-    // jump to cluster heap, then jump to first cluster
-    lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
-    lseek(handle, (main_boot_sector->first_cluster_of_root_directory - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
-    while (1)
-    {
-        read(handle, &temp_entryType, 1);
-        if (temp_entryType == 0xC1)
+        // stream extension entry
+        // jump to cluster heap, then jump to first cluster
+        while (1)
         {
-            lseek(handle, -1, SEEK_CUR);
-            read(handle, &file_name->EntryType, 1);
-            read(handle, &file_name->GeneralSecondaryFlags, 1);
-            read(handle, &file_name->FileName, 30);
-            break;
+            read(handle, &temp_entryType, 1);
+            if (temp_entryType == 0xC0)
+            {
+                lseek(handle, -1, SEEK_CUR);
+                read(handle, &stream_extension->EntryType, 1);
+                read(handle, &stream_extension->GeneralSecondaryFlags, 1);
+                read(handle, &stream_extension->Reserved1, 1);
+                read(handle, &stream_extension->NameLength, 1);
+                read(handle, &stream_extension->NameHash, 2);
+                read(handle, &stream_extension->Reserved2, 2);
+                read(handle, &stream_extension->ValidDataLength, 8);
+                read(handle, &stream_extension->Reserved3, 4);
+                read(handle, &stream_extension->FirstCluster, 4);
+                read(handle, &stream_extension->DataLength, 8);
+                break;
+            }
+            else
+            {
+                lseek(handle, 31, SEEK_CUR);
+            }
         }
-        else
+        printf("FirstCluster: %d\n", stream_extension->FirstCluster);
+        printf("DataLength: %lu\n", stream_extension->DataLength);
+
+        //  check NoFatChain
+        if ((stream_extension->GeneralSecondaryFlags[1] & 1) == 1)
         {
-            lseek(handle, 31, SEEK_CUR);
+            printf("NoFatChain1: %hhd\n", stream_extension->GeneralSecondaryFlags[1]);
         }
-    }
-    printf("FileName: %s\n", unicode2ascii(file_name->FileName, stream_extension->NameLength));
+        else if ((stream_extension->GeneralSecondaryFlags[1] & 1) == 0)
+        {
+            printf("NoFatChain0: %hhd\n", stream_extension->GeneralSecondaryFlags[1]);
+        }
+        if (i == 0)
+        {
+            temp_DataLength = stream_extension->DataLength;
+        }
+        i += 64;
+        printf("NameLength: %d\n", stream_extension->NameLength);
+        uint8_t numOfRestEnties = stream_extension->NameLength / 15 + 1;
+        uint8_t j = 0;
+        for (j = 0; j < numOfRestEnties; j++)
+        {
+            // file name entry
+            while (1)
+            {
+                read(handle, &temp_entryType, 1);
+                if (temp_entryType == 0xC1)
+                {
+                    lseek(handle, -1, SEEK_CUR);
+                    read(handle, &file_name->EntryType, 1);
+                    read(handle, &file_name->GeneralSecondaryFlags, 1);
+                    read(handle, &file_name->FileName, 30);
+                    break;
+                }
+                else
+                {
+                    lseek(handle, 31, SEEK_CUR);
+                }
+            }
+            printf("├── %s\n", unicode2ascii(file_name->FileName, stream_extension->NameLength));
+            i += 32;
+        }
+        printf("this root directory DataLength: %lu\n", temp_DataLength);
+        printf("have used Data: %lu\n", i);
+        printf("----------------------------------------------\n");
+        lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
+        lseek(handle, (stream_extension->FirstCluster - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
+    } while (i < temp_DataLength);
 }
 //------------------------------------------------------
 // myRoutine: parse_list_command
@@ -439,16 +466,6 @@ void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *
 //     stream_extension *stream_extension
 //     file_name *file_name
 //------------------------------------------------------
-void parse_list_command(main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name)
-{
-    assert(main_boot_sector != NULL);
-    assert(handle >= 0);
-    assert(file != NULL);
-    assert(stream_extension != NULL);
-    assert(file_name != NULL);
-
-
-}
 /**
  * Convert a Unicode-formatted string containing only ASCII characters
  * into a regular ASCII-formatted string (16 bit chars to 8 bit
