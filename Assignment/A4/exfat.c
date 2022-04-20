@@ -376,18 +376,18 @@ void parse_list_command(uint32_t isFile, uint64_t root, main_boot_sector *main_b
     uint64_t FATvalue = 0xffffffff;
     do
     {
-        if (FATvalue != 0xffffffff)
+        if (FATvalue != 0 && FATvalue != 0xffffffff)
         {
             root = FATvalue;
         }
-        printf("root: %lu\n", root);
+        //printf("root: %lu\n", root);
         lseek(handle, main_boot_sector->fat_offset * bytesPerSector, SEEK_SET);
         lseek(handle, root * 4, SEEK_CUR);
         read(handle, &FATvalue, 4);
-        //printf("FAT[%lu]: %lu\n", root, FATvalue);
+        // printf("FAT[%lu]: %lu\n", root, FATvalue);
         if (isFile == 1)
         {
-            printf("          return recusion\n");
+            //printf("          file return recusion\n");
             return;
         }
 
@@ -398,12 +398,16 @@ void parse_list_command(uint32_t isFile, uint64_t root, main_boot_sector *main_b
         uint64_t fileEnrtyDone = 0;
         uint64_t streamExtensionEntryDone = 0;
         uint64_t fileNameEnrtyDone = 0;
+        uint64_t fileNameIsLong = 0;
+        uint16_t currIndexInfileName = 0;
+        uint16_t fileNameString[1024];
+        //char spaceInRecursion[1024];
         while (entryCounter < clusterSize / 32)
         {
             uint8_t temp_entryType = 0;
             read(handle, &temp_entryType, 1);
-            //printf("temp_entryType: %x\n", temp_entryType);
-            if (temp_entryType == 0x85)
+            // printf("temp_entryType: %x\n", temp_entryType);
+            if (temp_entryType == 0x85 && fileNameIsLong == 0)
             {
                 assert(temp_entryType == 0x85);
                 lseek(handle, -1, SEEK_CUR);
@@ -425,9 +429,9 @@ void parse_list_command(uint32_t isFile, uint64_t root, main_boot_sector *main_b
                 entryCounter += 1;
                 fileEnrtyDone = 1;
                 // printf("SecondaryCount: %u\n", file->SecondaryCount);
-                printf("|     file entryCounter: %lu\n", entryCounter);
+                //printf("|     file entryCounter: %lu\n", entryCounter);
             }
-            else if (temp_entryType == 0xc0 && fileEnrtyDone == 1)
+            else if (temp_entryType == 0xc0 && fileEnrtyDone == 1 && fileNameIsLong == 0)
             {
                 assert(temp_entryType == 0xc0);
                 lseek(handle, -1, SEEK_CUR);
@@ -444,19 +448,50 @@ void parse_list_command(uint32_t isFile, uint64_t root, main_boot_sector *main_b
                 read(handle, &stream_extension->DataLength, 8);
                 entryCounter += 1;
                 streamExtensionEntryDone = 1;
-                printf("|     stream extension entryCounter: %lu\n", entryCounter);
+                //printf("|     stream extension entryCounter: %lu\n", entryCounter);
             }
             else if (temp_entryType == 0xc1 && fileEnrtyDone == 1 && streamExtensionEntryDone == 1)
             {
-                assert(temp_entryType == 0xc1);
+                //assert(temp_entryType == 0xc1);
                 lseek(handle, -1, SEEK_CUR);
-                // file entry
-                read(handle, &file_name->EntryType, 1);
-                read(handle, &file_name->GeneralSecondaryFlags, 1);
-                read(handle, &file_name->FileName, 30);
+                if (stream_extension->NameLength / 15 > 1)
+                {
+                    fileNameIsLong = 1;
+                    // file entry
+                    read(handle, &file_name->EntryType, 1);
+                    read(handle, &file_name->GeneralSecondaryFlags, 1);
+                    read(handle, &file_name->FileName, 30);
+                    uint16_t i = 0;
+                    for (i = 0; i < 15; i++)
+                    {
+                        fileNameString[currIndexInfileName] = file_name->FileName[i];
+                        currIndexInfileName += 1;
+                    }
+                    //printf("currIndexInfileName: %d\n", currIndexInfileName);
+                    //printf("NameLength: %d\n", stream_extension->NameLength);
+                    stream_extension->NameLength -= 15;
+                }
+                else
+                {
+                    fileNameIsLong = 0;
+                    // file entry
+                    read(handle, &file_name->EntryType, 1);
+                    read(handle, &file_name->GeneralSecondaryFlags, 1);
+                    read(handle, &file_name->FileName, 30);
+                    uint16_t i = 0;
+                    for (i = 0; i < stream_extension->NameLength; i++)
+                    {
+                        fileNameString[currIndexInfileName] = file_name->FileName[i];
+                        currIndexInfileName += 1;
+                    }
+                    //printf("currIndexInfileName: %d\n", currIndexInfileName);
+                    //printf("NameLength: %d\n", stream_extension->NameLength);
+                    stream_extension->NameLength = currIndexInfileName;
+                    //printf("restore NameLength: %d\n", stream_extension->NameLength);
+                    fileNameEnrtyDone = 1;
+                }
                 entryCounter += 1;
-                fileNameEnrtyDone = 1;
-                printf("|     file name entryCounter: %lu\n", entryCounter);
+                //printf("|     file name entryCounter: %lu\n", entryCounter);
             }
             else
             {
@@ -465,22 +500,22 @@ void parse_list_command(uint32_t isFile, uint64_t root, main_boot_sector *main_b
                 streamExtensionEntryDone = 0;
                 fileNameEnrtyDone = 0;
                 entryCounter += 1;
-                printf("|     none entryCounter: %lu\n", entryCounter);
+                //printf("|     none entryCounter: %lu\n", entryCounter);
             }
             if (fileEnrtyDone == 1 && streamExtensionEntryDone == 1 && fileNameEnrtyDone == 1)
             {
-                //printf("first cluster: %u\n", stream_extension->FirstCluster);
-                printf("└── %s\n", unicode2ascii(file_name->FileName, stream_extension->NameLength));
+                // printf("first cluster: %u\n", stream_extension->FirstCluster);
+                printf("└── %s\n", unicode2ascii(fileNameString, stream_extension->NameLength));
                 if ((file->FileAttributes & (1 << 4)) >> 4 == 0)
                 {
                     assert((file->FileAttributes & (1 << 4)) >> 4 == 0);
                     // file is 0
                     isFile = 1;
-                    printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> into recusion\n");
+                    //printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> into recusion\n");
                     assert(isFile == 1);
                     parse_list_command(isFile, stream_extension->FirstCluster, main_boot_sector, handle, file, stream_extension, file_name);
-                    printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< quit recusion\n");
-                    printf("*** root: %lu\n", root);
+                    //printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< quit recusion\n");
+                    //printf("*** root: %lu\n", root);
                     //printf("*** FAT[%lu]: %lu\n", root, FATvalue);
                 }
                 else
@@ -488,24 +523,27 @@ void parse_list_command(uint32_t isFile, uint64_t root, main_boot_sector *main_b
                     assert((file->FileAttributes & (1 << 4)) >> 4 == 1);
                     // directory is 1
                     isFile = 0;
-                    printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> into recusion\n");
+                    //printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> into recusion\n");
                     assert(isFile == 0);
                     parse_list_command(isFile, stream_extension->FirstCluster, main_boot_sector, handle, file, stream_extension, file_name);
-                    printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< quit recusion\n");
-                    printf("*** root: %lu\n", root);
+                    //printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< quit recusion\n");
+                    //printf("*** root: %lu\n", root);
                     //printf("*** FAT[%lu]: %lu\n", root, FATvalue);
                 }
                 lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
                 lseek(handle, (root - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
                 lseek(handle, entryCounter * 32, SEEK_CUR);
+                isFile = 0;
                 fileEnrtyDone = 0;
                 streamExtensionEntryDone = 0;
                 fileNameEnrtyDone = 0;
+                currIndexInfileName = 0;
             }
         }
         entryCounter = 0;
-    } while (FATvalue != 4294967288 && FATvalue != 0xFFFFFFFF);
+    } while (FATvalue != 0 && FATvalue != 0xFFFFFFFF);
 
+    //printf("          directory return recusion\n");
     return;
 }
 /**
