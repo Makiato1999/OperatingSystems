@@ -114,7 +114,7 @@ void read_volume(main_boot_sector *main_boot_sector, int handle);
 void prepare_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
 void print_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
 void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
-void parse_list_command(uint32_t isFile, uint64_t root, main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
+void parse_list_command(uint64_t layerOfRecursion, uint32_t isFile, uint64_t root, main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
 static char *unicode2ascii(uint16_t *unicode_string, uint8_t length);
 
 int main(int argc, char *argv[])
@@ -347,7 +347,7 @@ void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *
     printf("numOfFAT: %d\n", main_boot_sector->number_of_fats);
     printf("clusterSizeByBytes: %lu\n", clusterSize);
 
-    parse_list_command(9999, main_boot_sector->first_cluster_of_root_directory, main_boot_sector, handle, file, stream_extension, file_name);
+    parse_list_command(0, 9999, main_boot_sector->first_cluster_of_root_directory, main_boot_sector, handle, file, stream_extension, file_name);
 
     /*
     //  check NoFatChain
@@ -371,7 +371,7 @@ void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *
 //     stream_extension *stream_extension
 //     file_name *file_name
 //------------------------------------------------------
-void parse_list_command(uint32_t isFile, uint64_t root, main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name)
+void parse_list_command(uint64_t layerOfRecursion, uint32_t isFile, uint64_t root, main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name)
 {
     uint64_t fileEnrtyDone = 0;
     uint64_t streamExtensionEntryDone = 0;
@@ -492,8 +492,14 @@ void parse_list_command(uint32_t isFile, uint64_t root, main_boot_sector *main_b
             }
             if (fileEnrtyDone == 1 && streamExtensionEntryDone == 1 && fileNameEnrtyDone == 1)
             {
+                uint64_t j = 0;
+                for (j = 0; j < layerOfRecursion; j++)
+                {
+                   printf("-");
+                }
+                layerOfRecursion += 1;
                 // printf("first cluster: %u\n", stream_extension->FirstCluster);
-                printf("└── %s\n", unicode2ascii(fileNameString, stream_extension->NameLength));
+                printf("%s\n", unicode2ascii(fileNameString, stream_extension->NameLength));
                 if ((file->FileAttributes & (1 << 4)) >> 4 == 0)
                 {
                     assert((file->FileAttributes & (1 << 4)) >> 4 == 0);
@@ -501,7 +507,7 @@ void parse_list_command(uint32_t isFile, uint64_t root, main_boot_sector *main_b
                     isFile = 1;
                     //printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> into recusion\n");
                     assert(isFile == 1);
-                    parse_list_command(isFile, stream_extension->FirstCluster, main_boot_sector, handle, file, stream_extension, file_name);
+                    parse_list_command(layerOfRecursion, isFile, stream_extension->FirstCluster, main_boot_sector, handle, file, stream_extension, file_name);
                     //printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< quit recusion\n");
                     //printf("*** root: %lu\n", root);
                     // printf("*** FAT[%lu]: %lu\n", root, FATvalue);
@@ -513,11 +519,12 @@ void parse_list_command(uint32_t isFile, uint64_t root, main_boot_sector *main_b
                     isFile = 0;
                     //printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> into recusion\n");
                     assert(isFile == 0);
-                    parse_list_command(isFile, stream_extension->FirstCluster, main_boot_sector, handle, file, stream_extension, file_name);
+                    parse_list_command(layerOfRecursion, isFile, stream_extension->FirstCluster, main_boot_sector, handle, file, stream_extension, file_name);
                     //printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< quit recusion\n");
                     //printf("*** root: %lu\n", root);
                     // printf("*** FAT[%lu]: %lu\n", root, FATvalue);
                 }
+                layerOfRecursion -= 1;
                 lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
                 lseek(handle, (root - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
                 lseek(handle, entryCounter * 32, SEEK_CUR);
