@@ -116,8 +116,8 @@ void prepare_info_command(main_boot_sector *main_boot_sector, int handle, volume
 void print_info_command(main_boot_sector *main_boot_sector, int handle, volume_label *volume_label, allocation_bitmap *allocation_bitmap);
 void prepare_list_command(main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
 void parse_list_command(uint64_t layerOfRecursion, uint32_t isFile, uint64_t root, main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
-void prepare_get_command(char *path, main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
-void parse_get_command(char *pathway[], uint64_t layerOfRecursion, uint32_t isFile, uint64_t root, main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
+void prepare_get_command(char *wholePath, main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
+void parse_get_command(uint32_t isFind, char *directoryPathway, char *pathway[], uint64_t layerOfRecursion, uint32_t isFile, uint64_t root, main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name);
 static char *unicode2ascii(uint16_t *unicode_string, uint8_t length);
 
 int main(int argc, char *argv[])
@@ -155,8 +155,8 @@ int main(int argc, char *argv[])
     else if (strcmp(commandName, "get") == 0)
     {
         printf("command: %s\n", commandName);
-        char *path = argv[3];
-        prepare_get_command(path, &main_boot_sector, fd, &file, &stream_extension, &file_name);
+        char *wholePath = argv[3];
+        prepare_get_command(wholePath, &main_boot_sector, fd, &file, &stream_extension, &file_name);
     }
     return EXIT_SUCCESS;
 }
@@ -549,9 +549,9 @@ void parse_list_command(uint64_t layerOfRecursion, uint32_t isFile, uint64_t roo
 //     stream_extension *stream_extension
 //     file_name *file_name
 //------------------------------------------------------
-void prepare_get_command(char *path, main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name)
+void prepare_get_command(char *wholePath, main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name)
 {
-    assert(path != NULL);
+    assert(wholePath != NULL);
     assert(main_boot_sector != NULL);
     assert(handle >= 0);
     assert(file != NULL);
@@ -563,10 +563,12 @@ void prepare_get_command(char *path, main_boot_sector *main_boot_sector, int han
     bytesPerCluster = (1 << main_boot_sector->sectors_per_cluster_shift) * (1 << main_boot_sector->bytes_per_sector_shift);
     clusterSize = bytesPerSector * sectorsPerCluster;
 
+    // char wholePathway[1024];
+    // strcat(wholePathway, wholePath);
     char *pathway[1024];
     char *p;
     int counter = 0;
-    p = strtok(path, "/");
+    p = strtok(wholePath, "/");
     pathway[counter] = p;
     counter += 1;
     while ((p = strtok(NULL, "/")) != NULL)
@@ -580,13 +582,14 @@ void prepare_get_command(char *path, main_boot_sector *main_boot_sector, int han
         // printf("[%s]\n", pathway[i]);
     }
 
-    parse_get_command(pathway, 0, 9999, main_boot_sector->first_cluster_of_root_directory, main_boot_sector, handle, file, stream_extension, file_name);
+    parse_get_command(0, "", pathway, 0, 9999, main_boot_sector->first_cluster_of_root_directory, main_boot_sector, handle, file, stream_extension, file_name);
 }
 //------------------------------------------------------
 // myRoutine: parse_get_command
 //
 // PURPOSE: parse entries: file, stream_extension, file_name
 // INPUT PARAMETERS:
+//     char *wholePath
 //     char *pathway[]
 //     uint64_t layerOfRecursion
 //     uint32_t isFile
@@ -597,7 +600,7 @@ void prepare_get_command(char *path, main_boot_sector *main_boot_sector, int han
 //     stream_extension *stream_extension
 //     file_name *file_name
 //------------------------------------------------------
-void parse_get_command(char *pathway[], uint64_t layerOfRecursion, uint32_t isFile, uint64_t root, main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name)
+void parse_get_command(uint32_t isFind, char *directoryPathway, char *pathway[], uint64_t layerOfRecursion, uint32_t isFile, uint64_t root, main_boot_sector *main_boot_sector, int handle, file *file, stream_extension *stream_extension, file_name *file_name)
 {
     uint64_t fileEnrtyDone = 0;
     uint64_t streamExtensionEntryDone = 0;
@@ -618,158 +621,189 @@ void parse_get_command(char *pathway[], uint64_t layerOfRecursion, uint32_t isFi
         lseek(handle, root * 4, SEEK_CUR);
         read(handle, &FATvalue, 4);
         // printf("FAT[%lu]: %lu\n", root, FATvalue);
-        if (isFile == 1)
-        {
-            // printf("          file return recusion\n");
-            return;
-        }
-
         lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
         lseek(handle, (root - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
-
         uint64_t entryCounter = 0;
-        // char spaceInRecursion[1024];
-        while (entryCounter < clusterSize / 32)
+        if (isFile == 1)
         {
-            uint8_t temp_entryType = 0;
-            read(handle, &temp_entryType, 1);
-            // printf("temp_entryType: %x\n", temp_entryType);
-            if (temp_entryType == 0x85 && fileNameLoopFlag == 0)
+            if (isFind == 1)
             {
-                assert(temp_entryType == 0x85);
-                lseek(handle, -1, SEEK_CUR);
-                // file entry
-                read(handle, &file->EntryType, 1);
-                read(handle, &file->SecondaryCount, 1);
-                read(handle, &file->SetChecksum, 2);
-                read(handle, &file->FileAttributes, 2);
-                read(handle, &file->Reserved1, 2);
-                read(handle, &file->CreateTimestamp, 4);
-                read(handle, &file->LastModifiedTimestamp, 4);
-                read(handle, &file->LastAccessedTimestamp, 4);
-                read(handle, &file->Create10msIncrement, 1);
-                read(handle, &file->LastModified10msIncrement, 1);
-                read(handle, &file->CreateUtcOffset, 1);
-                read(handle, &file->LastModifiedUtcOffset, 1);
-                read(handle, &file->LastAccessedUtcOffset, 1);
-                read(handle, &file->Reserved2, 7);
-                entryCounter += 1;
-                fileEnrtyDone = 1;
-                // printf("|     file entryCounter: %lu\n", entryCounter);
-            }
-            else if (temp_entryType == 0xc0 && fileEnrtyDone == 1 && fileNameLoopFlag == 0)
-            {
-                assert(temp_entryType == 0xc0);
-                lseek(handle, -1, SEEK_CUR);
-                // stream extension entry
-                read(handle, &stream_extension->EntryType, 1);
-                read(handle, &stream_extension->GeneralSecondaryFlags, 1);
-                read(handle, &stream_extension->Reserved1, 1);
-                read(handle, &stream_extension->NameLength, 1);
-                read(handle, &stream_extension->NameHash, 2);
-                read(handle, &stream_extension->Reserved2, 2);
-                read(handle, &stream_extension->ValidDataLength, 8);
-                read(handle, &stream_extension->Reserved3, 4);
-                read(handle, &stream_extension->FirstCluster, 4);
-                read(handle, &stream_extension->DataLength, 8);
-                entryCounter += 1;
-                streamExtensionEntryDone = 1;
-                // printf("|     stream extension entryCounter: %lu\n", entryCounter);
-            }
-            else if (temp_entryType == 0xc1 && fileEnrtyDone == 1 && streamExtensionEntryDone == 1)
-            {
-                lseek(handle, -1, SEEK_CUR);
-                // printf("file->SecondaryCount: %d\n", file->SecondaryCount);
-                if (i < file->SecondaryCount - 1)
+                printf("fileName: %s\n", pathway[layerOfRecursion - 1]);
+                printf("directoryPathway: %s\n", directoryPathway);
+                /*
+                FILE *fp = fopen(directoryPathway, "w");
+                if (fp == NULL)
                 {
-                    // file entry
-                    read(handle, &file_name->EntryType, 1);
-                    read(handle, &file_name->GeneralSecondaryFlags, 1);
-                    read(handle, &file_name->FileName, 30);
-                    // file entry
-                    uint16_t j = 0;
-                    for (j = 0; j < 15; j++)
-                    {
-                        fileNameString[currFileNameIndex] = file_name->FileName[j];
-                        currFileNameIndex += 1;
-                    }
-                    entryCounter += 1;
-                    // printf("|     file name entryCounter: %lu\n", entryCounter);
-                    i += 1;
-                    fileNameEnrtyDone = 0;
-                    fileNameLoopFlag = 1;
-                }
-                if (i == file->SecondaryCount - 1)
-                {
-                    fileNameEnrtyDone = 1;
-                    currFileNameIndex = 0;
-                    i = 0;
-                    fileNameLoopFlag = 0;
-                }
+                    perror("Failed to create file!\n");
+                    exit(0);
+                }*/
+                /*
+                char data[1024];
+                read(handle, &data, stream_extension->DataLength);
+                fputs(data, fp);*/
+                // printf("          file return recusion\n");
+                exit(1);
             }
             else
             {
-                lseek(handle, 31, SEEK_CUR);
-                fileEnrtyDone = 0;
-                streamExtensionEntryDone = 0;
-                fileNameEnrtyDone = 0;
-                entryCounter += 1;
-                // printf("|     none entryCounter: %lu\n", entryCounter);
+                return;
             }
-            if (fileEnrtyDone == 1 && streamExtensionEntryDone == 1 && fileNameEnrtyDone == 1)
+        }
+        else
+        {
+            while (entryCounter < clusterSize / 32)
             {
-                uint64_t j = 0;
-                for (j = 0; j < layerOfRecursion; j++)
+                uint8_t temp_entryType = 0;
+                read(handle, &temp_entryType, 1);
+                // printf("temp_entryType: %x\n", temp_entryType);
+                if (temp_entryType == 0x85 && fileNameLoopFlag == 0)
                 {
-                    // printf("-");
+                    assert(temp_entryType == 0x85);
+                    lseek(handle, -1, SEEK_CUR);
+                    // file entry
+                    read(handle, &file->EntryType, 1);
+                    read(handle, &file->SecondaryCount, 1);
+                    read(handle, &file->SetChecksum, 2);
+                    read(handle, &file->FileAttributes, 2);
+                    read(handle, &file->Reserved1, 2);
+                    read(handle, &file->CreateTimestamp, 4);
+                    read(handle, &file->LastModifiedTimestamp, 4);
+                    read(handle, &file->LastAccessedTimestamp, 4);
+                    read(handle, &file->Create10msIncrement, 1);
+                    read(handle, &file->LastModified10msIncrement, 1);
+                    read(handle, &file->CreateUtcOffset, 1);
+                    read(handle, &file->LastModifiedUtcOffset, 1);
+                    read(handle, &file->LastAccessedUtcOffset, 1);
+                    read(handle, &file->Reserved2, 7);
+                    entryCounter += 1;
+                    fileEnrtyDone = 1;
+                    // printf("|     file entryCounter: %lu\n", entryCounter);
                 }
-                // printf("first cluster: %u\n", stream_extension->FirstCluster);
-                // printf("%s\n", unicode2ascii(fileNameString, stream_extension->NameLength));
-                if (strcmp(unicode2ascii(fileNameString, stream_extension->NameLength), pathway[layerOfRecursion]) == 0)
+                else if (temp_entryType == 0xc0 && fileEnrtyDone == 1 && fileNameLoopFlag == 0)
                 {
-                    char tempCombo[1024];
-                    uint64_t k = 0;
-                    strcat(tempCombo, pathway[k]);
-                    for (k = 1; k < layerOfRecursion; k++)
+                    assert(temp_entryType == 0xc0);
+                    lseek(handle, -1, SEEK_CUR);
+                    // stream extension entry
+                    read(handle, &stream_extension->EntryType, 1);
+                    read(handle, &stream_extension->GeneralSecondaryFlags, 1);
+                    read(handle, &stream_extension->Reserved1, 1);
+                    read(handle, &stream_extension->NameLength, 1);
+                    read(handle, &stream_extension->NameHash, 2);
+                    read(handle, &stream_extension->Reserved2, 2);
+                    read(handle, &stream_extension->ValidDataLength, 8);
+                    read(handle, &stream_extension->Reserved3, 4);
+                    read(handle, &stream_extension->FirstCluster, 4);
+                    read(handle, &stream_extension->DataLength, 8);
+                    entryCounter += 1;
+                    streamExtensionEntryDone = 1;
+                    // printf("|     stream extension entryCounter: %lu\n", entryCounter);
+                }
+                else if (temp_entryType == 0xc1 && fileEnrtyDone == 1 && streamExtensionEntryDone == 1)
+                {
+                    lseek(handle, -1, SEEK_CUR);
+                    // printf("file->SecondaryCount: %d\n", file->SecondaryCount);
+                    if (i < file->SecondaryCount - 1)
                     {
-                        strcat(tempCombo, "/");
-                        strcat(tempCombo, pathway[k]);
+                        // file entry
+                        read(handle, &file_name->EntryType, 1);
+                        read(handle, &file_name->GeneralSecondaryFlags, 1);
+                        read(handle, &file_name->FileName, 30);
+                        // file entry
+                        uint16_t j = 0;
+                        for (j = 0; j < 15; j++)
+                        {
+                            fileNameString[currFileNameIndex] = file_name->FileName[j];
+                            currFileNameIndex += 1;
+                        }
+                        entryCounter += 1;
+                        // printf("|     file name entryCounter: %lu\n", entryCounter);
+                        i += 1;
+                        fileNameEnrtyDone = 0;
+                        fileNameLoopFlag = 1;
                     }
-                    mkdir(tempCombo, 0777);
-                }
-                layerOfRecursion += 1;
-                if ((file->FileAttributes & (1 << 4)) >> 4 == 0)
-                {
-                    assert((file->FileAttributes & (1 << 4)) >> 4 == 0);
-                    // file is 0
-                    isFile = 1;
-                    // printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> into recusion\n");
-                    assert(isFile == 1);
-                    parse_get_command(pathway, layerOfRecursion, isFile, stream_extension->FirstCluster, main_boot_sector, handle, file, stream_extension, file_name);
-                    // printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< quit recusion\n");
-                    // printf("*** root: %lu\n", root);
-                    //  printf("*** FAT[%lu]: %lu\n", root, FATvalue);
+                    if (i == file->SecondaryCount - 1)
+                    {
+                        fileNameEnrtyDone = 1;
+                        currFileNameIndex = 0;
+                        i = 0;
+                        fileNameLoopFlag = 0;
+                    }
                 }
                 else
                 {
-                    assert((file->FileAttributes & (1 << 4)) >> 4 == 1);
-                    // directory is 1
-                    isFile = 0;
-                    // printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> into recusion\n");
-                    assert(isFile == 0);
-                    parse_get_command(pathway, layerOfRecursion, isFile, stream_extension->FirstCluster, main_boot_sector, handle, file, stream_extension, file_name);
-                    // printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< quit recusion\n");
-                    // printf("*** root: %lu\n", root);
-                    //  printf("*** FAT[%lu]: %lu\n", root, FATvalue);
+                    lseek(handle, 31, SEEK_CUR);
+                    fileEnrtyDone = 0;
+                    streamExtensionEntryDone = 0;
+                    fileNameEnrtyDone = 0;
+                    entryCounter += 1;
+                    // printf("|     none entryCounter: %lu\n", entryCounter);
                 }
-                layerOfRecursion -= 1;
-                lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
-                lseek(handle, (root - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
-                lseek(handle, entryCounter * 32, SEEK_CUR);
-                isFile = 0;
-                fileEnrtyDone = 0;
-                streamExtensionEntryDone = 0;
-                fileNameEnrtyDone = 0;
+                if (fileEnrtyDone == 1 && streamExtensionEntryDone == 1 && fileNameEnrtyDone == 1)
+                {
+                    char temp_directoryPathway[1024] = "";
+                    if ((file->FileAttributes & (1 << 4)) >> 4 == 0)
+                    {
+                        // file is 0
+                        isFile = 1;
+                    }
+                    else
+                    {
+                        // directory is 1
+                        isFile = 0;
+                    }
+                    // printf("first cluster: %u\n", stream_extension->FirstCluster);
+                    printf("%s\n", unicode2ascii(fileNameString, stream_extension->NameLength));
+                    printf("pathWay[%lu]: %s\n", layerOfRecursion, pathway[layerOfRecursion]);
+                    if (strcmp(unicode2ascii(fileNameString, stream_extension->NameLength), pathway[layerOfRecursion]) == 0)
+                    {
+                        if (isFile == 1)
+                        {
+                            printf("Find it, don't create directory\n");
+                            strcpy(temp_directoryPathway, directoryPathway);
+                            isFind = 1;
+                        }
+                        else
+                        {
+                            uint64_t k = 0;
+                            for (k = 0; k <= layerOfRecursion; k++)
+                            {
+                                if (k == 0)
+                                {
+                                    strcat(temp_directoryPathway, pathway[k]);
+                                }
+                                else
+                                {
+                                    strcat(temp_directoryPathway, "/");
+                                    strcat(temp_directoryPathway, pathway[k]);
+                                }
+                            }
+                            mkdir(temp_directoryPathway, 0777);
+                            isFind = 0;
+                        }
+                        layerOfRecursion += 1;
+                        // printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> into recusion\n");
+                        parse_get_command(isFind, temp_directoryPathway, pathway, layerOfRecursion, isFile, stream_extension->FirstCluster, main_boot_sector, handle, file, stream_extension, file_name);
+                        // printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< quit recusion\n");
+                        // printf("*** root: %lu\n", root);
+                        // printf("*** FAT[%lu]: %lu\n", root, FATvalue);
+                        layerOfRecursion -= 1;
+                    }
+                    else
+                    {
+                        printf("This is not the file which we find\n");
+                        strcpy(temp_directoryPathway, directoryPathway);
+                        isFind = 0;
+                    }
+                    //printf("temp_directoryPathway: %s\n", temp_directoryPathway);
+                    printf("layerOfRecursion: %lu\n", layerOfRecursion);
+                    lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
+                    lseek(handle, (root - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
+                    lseek(handle, entryCounter * 32, SEEK_CUR);
+                    isFile = 0;
+                    fileEnrtyDone = 0;
+                    streamExtensionEntryDone = 0;
+                    fileNameEnrtyDone = 0;
+                }
             }
         }
         entryCounter = 0;
