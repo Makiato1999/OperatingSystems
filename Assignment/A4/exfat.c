@@ -630,13 +630,23 @@ void parse_get_command(uint32_t isFind, char *directoryPathway, char *pathway[],
             {
                 printf("fileName: %s\n", pathway[layerOfRecursion - 1]);
                 printf("directoryPathway: %s\n", directoryPathway);
-                /*
+                char *p;
+                char *newFileName;
+                p = strtok(pathway[layerOfRecursion - 1], ".");
+                newFileName = p;
+                strcat(newFileName, ".txt");
+                if (layerOfRecursion - 1 > 0)
+                {
+                    strcat(directoryPathway, "/");
+                }
+                strcat(directoryPathway, newFileName);
+                printf("new directoryPathway: %s\n", directoryPathway);
                 FILE *fp = fopen(directoryPathway, "w");
                 if (fp == NULL)
                 {
                     perror("Failed to create file!\n");
                     exit(0);
-                }*/
+                }
                 /*
                 char data[1024];
                 read(handle, &data, stream_extension->DataLength);
@@ -794,7 +804,7 @@ void parse_get_command(uint32_t isFind, char *directoryPathway, char *pathway[],
                         strcpy(temp_directoryPathway, directoryPathway);
                         isFind = 0;
                     }
-                    //printf("temp_directoryPathway: %s\n", temp_directoryPathway);
+                    // printf("temp_directoryPathway: %s\n", temp_directoryPathway);
                     printf("layerOfRecursion: %lu\n", layerOfRecursion);
                     lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
                     lseek(handle, (root - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
