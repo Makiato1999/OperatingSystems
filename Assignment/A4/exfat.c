@@ -629,9 +629,10 @@ void parse_get_command(uint32_t isFind, char *directoryPathway, char *pathway[],
         {
             if (isFind == 1)
             {
+                uint64_t temp_root;
                 // create txt file
-                //printf("fileName: %s\n", pathway[layerOfRecursion - 1]);
-                //printf("directoryPathway: %s\n", directoryPathway);
+                // printf("fileName: %s\n", pathway[layerOfRecursion - 1]);
+                // printf("directoryPathway: %s\n", directoryPathway);
                 char *p;
                 char *newFileName;
                 p = strtok(pathway[layerOfRecursion - 1], ".");
@@ -650,14 +651,41 @@ void parse_get_command(uint32_t isFind, char *directoryPathway, char *pathway[],
                     perror("Failed to create file!\n");
                     exit(0);
                 }
+                // check file content whether has chain
                 // write data into txt file
-                uint64_t k = 0;
-                for (k = 0; k < stream_extension->DataLength; k++)
+                do
                 {
-                    char *data;
-                    read(handle, &data, 1);
-                    fwrite(&data, 1, 1, fp);
-                }
+                    if (stream_extension->DataLength <= clusterSize)
+                    {
+                        // write data into txt file
+                        uint64_t k = 0;
+                        for (k = 0; k < stream_extension->DataLength; k++)
+                        {
+                            char *data;
+                            read(handle, &data, 1);
+                            fwrite(&data, 1, 1, fp);
+                        }
+                        temp_root = FATvalue;
+                    }
+                    else
+                    {
+                        // write data into txt file
+                        uint64_t k = 0;
+                        for (k = 0; k < clusterSize; k++)
+                        {
+                            char *data;
+                            read(handle, &data, 1);
+                            fwrite(&data, 1, 1, fp);
+                        }
+                        temp_root = FATvalue;
+                        lseek(handle, main_boot_sector->fat_offset * bytesPerSector, SEEK_SET);
+                        lseek(handle, temp_root * 4, SEEK_CUR);
+                        read(handle, &FATvalue, 4);
+                        // printf("FAT[%lu]: %lu\n", root, FATvalue);
+                        lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
+                        lseek(handle, (temp_root - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
+                    }
+                } while (temp_root != 0 && temp_root != 0xFFFFFFFF);
                 exit(1);
             }
             else
@@ -768,13 +796,13 @@ void parse_get_command(uint32_t isFind, char *directoryPathway, char *pathway[],
                         isFile = 0;
                     }
                     // printf("first cluster: %u\n", stream_extension->FirstCluster);
-                    //printf("%s\n", unicode2ascii(fileNameString, stream_extension->NameLength));
-                    //printf("pathWay[%lu]: %s\n", layerOfRecursion, pathway[layerOfRecursion]);
+                    // printf("%s\n", unicode2ascii(fileNameString, stream_extension->NameLength));
+                    // printf("pathWay[%lu]: %s\n", layerOfRecursion, pathway[layerOfRecursion]);
                     if (strcmp(unicode2ascii(fileNameString, stream_extension->NameLength), pathway[layerOfRecursion]) == 0)
                     {
                         if (isFile == 1)
                         {
-                            //printf("Find it, don't create directory\n");
+                            // printf("Find it, don't create directory\n");
                             strcpy(temp_directoryPathway, directoryPathway);
                             isFind = 1;
                         }
@@ -806,11 +834,11 @@ void parse_get_command(uint32_t isFind, char *directoryPathway, char *pathway[],
                     }
                     else
                     {
-                        //printf("This is not the file which we find\n");
+                        // printf("This is not the file which we find\n");
                         strcpy(temp_directoryPathway, directoryPathway);
                         isFind = 0;
                     }
-                    //printf("layerOfRecursion: %lu\n", layerOfRecursion);
+                    // printf("layerOfRecursion: %lu\n", layerOfRecursion);
                     lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
                     lseek(handle, (root - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
                     lseek(handle, entryCounter * 32, SEEK_CUR);
