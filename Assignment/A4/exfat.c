@@ -143,18 +143,18 @@ int main(int argc, char *argv[])
     // check command
     if (strcmp(commandName, "info") == 0)
     {
-        printf("command: %s\n", commandName);
+        printf("Command: %s\n", commandName);
         prepare_info_command(&main_boot_sector, fd, &volume_label, &allocation_bitmap);
         print_info_command(&main_boot_sector, fd, &volume_label, &allocation_bitmap);
     }
     else if (strcmp(commandName, "list") == 0)
     {
-        printf("command: %s\n", commandName);
+        printf("Command: %s\n", commandName);
         prepare_list_command(&main_boot_sector, fd, &file, &stream_extension, &file_name);
     }
     else if (strcmp(commandName, "get") == 0)
     {
-        printf("command: %s\n", commandName);
+        printf("Command: %s\n", commandName);
         char *wholePath = argv[3];
         prepare_get_command(wholePath, &main_boot_sector, fd, &file, &stream_extension, &file_name);
     }
@@ -589,7 +589,8 @@ void prepare_get_command(char *wholePath, main_boot_sector *main_boot_sector, in
 //
 // PURPOSE: parse entries: file, stream_extension, file_name
 // INPUT PARAMETERS:
-//     char *wholePath
+//     uint32_t isFind
+//     char *directoryPathway
 //     char *pathway[]
 //     uint64_t layerOfRecursion
 //     uint32_t isFile
@@ -628,30 +629,35 @@ void parse_get_command(uint32_t isFind, char *directoryPathway, char *pathway[],
         {
             if (isFind == 1)
             {
-                printf("fileName: %s\n", pathway[layerOfRecursion - 1]);
-                printf("directoryPathway: %s\n", directoryPathway);
+                // create txt file
+                //printf("fileName: %s\n", pathway[layerOfRecursion - 1]);
+                //printf("directoryPathway: %s\n", directoryPathway);
                 char *p;
                 char *newFileName;
                 p = strtok(pathway[layerOfRecursion - 1], ".");
                 newFileName = p;
                 strcat(newFileName, ".txt");
+                // check whether file in on the root directory
                 if (layerOfRecursion - 1 > 0)
                 {
                     strcat(directoryPathway, "/");
                 }
                 strcat(directoryPathway, newFileName);
-                printf("new directoryPathway: %s\n", directoryPathway);
+                printf("Get file successfully!\nYou can find it by path: %s\n", directoryPathway);
                 FILE *fp = fopen(directoryPathway, "w");
                 if (fp == NULL)
                 {
                     perror("Failed to create file!\n");
                     exit(0);
                 }
-                /*
-                char data[1024];
-                read(handle, &data, stream_extension->DataLength);
-                fputs(data, fp);*/
-                // printf("          file return recusion\n");
+                // write data into txt file
+                uint64_t k = 0;
+                for (k = 0; k < stream_extension->DataLength; k++)
+                {
+                    char *data;
+                    read(handle, &data, 1);
+                    fwrite(&data, 1, 1, fp);
+                }
                 exit(1);
             }
             else
@@ -762,13 +768,13 @@ void parse_get_command(uint32_t isFind, char *directoryPathway, char *pathway[],
                         isFile = 0;
                     }
                     // printf("first cluster: %u\n", stream_extension->FirstCluster);
-                    printf("%s\n", unicode2ascii(fileNameString, stream_extension->NameLength));
-                    printf("pathWay[%lu]: %s\n", layerOfRecursion, pathway[layerOfRecursion]);
+                    //printf("%s\n", unicode2ascii(fileNameString, stream_extension->NameLength));
+                    //printf("pathWay[%lu]: %s\n", layerOfRecursion, pathway[layerOfRecursion]);
                     if (strcmp(unicode2ascii(fileNameString, stream_extension->NameLength), pathway[layerOfRecursion]) == 0)
                     {
                         if (isFile == 1)
                         {
-                            printf("Find it, don't create directory\n");
+                            //printf("Find it, don't create directory\n");
                             strcpy(temp_directoryPathway, directoryPathway);
                             isFind = 1;
                         }
@@ -800,12 +806,11 @@ void parse_get_command(uint32_t isFind, char *directoryPathway, char *pathway[],
                     }
                     else
                     {
-                        printf("This is not the file which we find\n");
+                        //printf("This is not the file which we find\n");
                         strcpy(temp_directoryPathway, directoryPathway);
                         isFind = 0;
                     }
-                    // printf("temp_directoryPathway: %s\n", temp_directoryPathway);
-                    printf("layerOfRecursion: %lu\n", layerOfRecursion);
+                    //printf("layerOfRecursion: %lu\n", layerOfRecursion);
                     lseek(handle, (main_boot_sector->cluster_heap_offset) * (bytesPerSector), SEEK_SET);
                     lseek(handle, (root - 2) * (sectorsPerCluster) * (bytesPerSector), SEEK_CUR);
                     lseek(handle, entryCounter * 32, SEEK_CUR);
