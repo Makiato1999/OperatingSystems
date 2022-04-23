@@ -633,17 +633,17 @@ void parse_get_command(uint32_t isFind, char *directoryPathway, char *pathway[],
                 // create txt file
                 // printf("fileName: %s\n", pathway[layerOfRecursion - 1]);
                 // printf("directoryPathway: %s\n", directoryPathway);
-                char *p;
-                char *newFileName;
-                p = strtok(pathway[layerOfRecursion - 1], ".");
-                newFileName = p;
-                strcat(newFileName, ".txt");
+                //char *p;
+                //char *newFileName;
+                //p = strtok(pathway[layerOfRecursion - 1], ".");
+                //newFileName = p;
+                //strcat(newFileName, ".txt");
                 // check whether file in on the root directory
                 if (layerOfRecursion - 1 > 0)
                 {
                     strcat(directoryPathway, "/");
                 }
-                strcat(directoryPathway, newFileName);
+                strcat(directoryPathway, pathway[layerOfRecursion - 1]);
                 printf("Get file successfully!\nYou can find it by path: %s\n", directoryPathway);
                 FILE *fp = fopen(directoryPathway, "w");
                 if (fp == NULL)
